@@ -121,7 +121,7 @@
   #log::-webkit-scrollbar { width: 6px; }
   #log::-webkit-scrollbar-thumb { background: var(--cyan-dim); }
 
-  .msg { margin-bottom: 1rem; white-space: pre-wrap; line-height: 1.5; font-size: 0.92rem; }
+  .msg { margin-bottom: 1rem; line-height: 1.5; font-size: 0.92rem; }
 
   .msg .role {
     display: block;
@@ -136,6 +136,37 @@
   .msg.user .content { color: var(--text); }
 
   .msg.assistant { border-left: 2px solid var(--cyan-dim); padding-left: 0.75rem; }
+
+  /* Rendered markdown inside .content */
+  .content p { margin: 0 0 0.6em; }
+  .content p:last-child { margin-bottom: 0; }
+  .content strong { color: var(--cyan); font-weight: 600; }
+  .content em { font-style: italic; color: var(--text); }
+  .content h1, .content h2, .content h3 {
+    margin: 0.8em 0 0.4em;
+    font-size: 0.95rem;
+    letter-spacing: 0.05em;
+    color: var(--cyan);
+  }
+  .content h1:first-child, .content h2:first-child, .content h3:first-child { margin-top: 0; }
+  .content ul, .content ol { margin: 0 0 0.6em; padding-left: 1.3em; }
+  .content li { margin-bottom: 0.2em; }
+  .content code {
+    background: rgba(77, 243, 255, 0.08);
+    border: 1px solid var(--border);
+    padding: 0.05em 0.35em;
+    border-radius: 2px;
+    font-size: 0.88em;
+  }
+  .content pre {
+    background: rgba(77, 243, 255, 0.05);
+    border: 1px solid var(--border);
+    padding: 0.6em 0.75em;
+    overflow-x: auto;
+    margin: 0 0 0.6em;
+  }
+  .content pre code { background: none; border: none; padding: 0; }
+  .content a { color: var(--cyan); }
   .msg.assistant .role { color: var(--cyan); }
 
   .msg.error { border-left: 2px solid var(--tier-destructive); padding-left: 0.75rem; }
@@ -290,6 +321,55 @@
   const input = document.getElementById("input");
   const core = document.getElementById("core");
 
+  function escapeHtml(text) {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // Small hand-rolled markdown renderer rather than a vendored library —
+  // the model only ever produces a modest subset (bold/italic/headers/
+  // lists/code/links), so a regex pass covers it without pulling in a
+  // full CommonMark implementation. HTML-escape happens first so any
+  // literal '<'/'>' in the model's own text can't turn into real tags —
+  // only the markdown syntax this function explicitly recognizes does.
+  function renderMarkdown(text) {
+    let html = escapeHtml(text);
+
+    html = html.replace(/```([\s\S]*?)```/g, (_, code) => "<pre><code>" + code.trim() + "</code></pre>");
+    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+    html = html.replace(/^### (.*)$/gm, "<h3>$1</h3>");
+    html = html.replace(/^## (.*)$/gm, "<h2>$1</h2>");
+    html = html.replace(/^# (.*)$/gm, "<h1>$1</h1>");
+    html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/(?<!\w)\*([^*\n]+)\*(?!\w)/g, "<em>$1</em>");
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+    // Consecutive "- " / "1. " lines become a single <ul>/<ol>.
+    // Leading whitespace tolerated (sub-bullets) but flattened into one
+    // list level rather than properly nested — full nested-list structure
+    // isn't worth the complexity for what this needs to convey.
+    html = html.replace(/(^|\n)((?:[ \t]*[-*] .*(?:\n|$))+)/g, (_, prefix, block) => {
+      const items = block.trim().split("\n").map((l) => "<li>" + l.replace(/^[ \t]*[-*]\s+/, "") + "</li>").join("");
+      return prefix + "<ul>" + items + "</ul>";
+    });
+    html = html.replace(/(^|\n)((?:[ \t]*\d+\. .*(?:\n|$))+)/g, (_, prefix, block) => {
+      const items = block.trim().split("\n").map((l) => "<li>" + l.replace(/^[ \t]*\d+\.\s+/, "") + "</li>").join("");
+      return prefix + "<ol>" + items + "</ol>";
+    });
+
+    // Remaining bare lines become paragraphs; skip blocks already tagged above.
+    html = html
+      .split(/\n{2,}/)
+      .map((block) => {
+        const t = block.trim();
+        if (!t) return "";
+        if (/^<(h[1-3]|ul|ol|pre)/.test(t)) return t;
+        return "<p>" + t.replace(/\n/g, "<br>") + "</p>";
+      })
+      .join("");
+
+    return html;
+  }
+
   function appendMessage(role, text) {
     const div = document.createElement("div");
     div.className = "msg " + role;
@@ -298,7 +378,7 @@
     roleLabel.textContent = role;
     const content = document.createElement("span");
     content.className = "content";
-    content.textContent = text;
+    content.innerHTML = renderMarkdown(text);
     div.appendChild(roleLabel);
     div.appendChild(content);
     log.appendChild(div);
