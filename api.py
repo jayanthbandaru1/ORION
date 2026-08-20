@@ -2,7 +2,18 @@
 ORION's API. One endpoint: POST /chat, plus the static web chat UI.
 
 Run with:
-    uvicorn api:app --reload
+    uvicorn api:app --reload --reload-dir core --reload-dir mcp_servers --reload-dir config --reload-dir interfaces
+
+The explicit --reload-dir allowlist matters: the coding tools write
+into ./workspace and the SQLite store writes into ./data as part of
+normal operation — without it, --reload's file watcher (which
+defaults to the whole project directory) treats every tool call as a
+source change and restarts the whole server, and every MCP subprocess,
+mid-request. (--reload-exclude glob patterns are the "textbook" fix,
+but got mangled by Git Bash's path conversion during development —
+--reload-dir sidesteps that with no glob characters involved. Editing
+api.py itself while the server is running needs a manual restart,
+since the project root isn't in this list.)
 """
 
 from contextlib import asynccontextmanager
