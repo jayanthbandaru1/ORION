@@ -4,4 +4,8 @@ __pycache__/
 .env
 data/
 workspace/
-models/
+# Root-anchored: the large STT/TTS weights (Kokoro, faster-whisper's
+# cache) live in the top-level ./models, gitignored for size. This must
+# NOT match interfaces/web/models/ — that one holds the small (~1MB),
+# freely-redistributable Porcupine base model, which is committed.
+/models/

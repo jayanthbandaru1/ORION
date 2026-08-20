@@ -18,15 +18,19 @@ since the project root isn't in this list.)
 """
 
 import base64
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from core.orchestrator import Orchestrator
 from interfaces.voice import stt, tts
+
+load_dotenv()
 
 orchestrator = Orchestrator()
 
@@ -96,6 +100,16 @@ async def chat_voice(
 @app.get("/health")
 async def health():
     return {"status": "ok", "tools_loaded": len(orchestrator.tools_schema)}
+
+
+@app.get("/config/voice")
+async def voice_config():
+    """Serves the Picovoice AccessKey to the wake-word JS. Kept out of the
+    static HTML/JS source (env var, not hardcoded) even though Porcupine
+    Web's own design has this key end up client-side either way — see
+    SETUP.md. Empty string if unset; the JS treats that as "wake word not
+    configured" and just doesn't start it, rather than erroring."""
+    return {"picovoice_access_key": os.environ.get("PICOVOICE_ACCESS_KEY", "")}
 
 
 # Mounted last so it doesn't shadow the API routes above — StaticFiles

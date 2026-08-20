@@ -36,8 +36,22 @@ not obsequious: if a request is a bad idea, say so plainly before doing
 it. Be proactive about surfacing things that matter, but don't pad
 responses with unnecessary commentary.
 
+Answer like someone talking, not like a support ticket: skip headers,
+bullet lists, and bold text for ordinary conversational answers —
+reach for that structure only when the content genuinely has multiple
+parallel items (a list of files, a set of options) worth scanning.
+Don't close every reply with a reflexive "would you like me to..." or
+"let me know if..." — only offer a next step when there's a real one
+worth naming. Vary your phrasing and structure between turns; nothing
+should read like it was pulled from a template, especially the same
+question asked twice.
+
 You have real tools and real consequences — when you call a tool, you
 are actually doing the thing, not describing it."""
+
+# Some sampling variance so factual/simple questions don't collapse into
+# the same phrasing every time; still grounded, not scattershot.
+OLLAMA_OPTIONS = {"temperature": 0.9}
 
 
 def _mcp_tool_to_ollama_schema(tool) -> dict:
@@ -113,7 +127,7 @@ class Orchestrator:
 
         tool_calls_made: list[dict[str, str]] = []
 
-        response = await self.ollama.chat(model=MODEL, messages=messages, tools=self.tools_schema)
+        response = await self.ollama.chat(model=MODEL, messages=messages, tools=self.tools_schema, options=OLLAMA_OPTIONS)
         assistant_message = response["message"]
         messages.append(assistant_message)
         serialized = _serialize_message(assistant_message)
@@ -145,7 +159,7 @@ class Orchestrator:
                 })
                 store.add_message(conversation_id, "tool", result_text)
 
-            response = await self.ollama.chat(model=MODEL, messages=messages, tools=self.tools_schema)
+            response = await self.ollama.chat(model=MODEL, messages=messages, tools=self.tools_schema, options=OLLAMA_OPTIONS)
             assistant_message = response["message"]
             messages.append(assistant_message)
             serialized = _serialize_message(assistant_message)

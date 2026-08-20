@@ -224,6 +224,38 @@
   .msg.voice .role::after {
     content: " \1F3A4";
   }
+
+  #wake-status {
+    margin-top: 0.4rem;
+    font-size: 0.62rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  #wake-status .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    flex: none;
+  }
+  #wake-status.armed .dot {
+    background: var(--tier-read);
+    box-shadow: 0 0 6px var(--tier-read);
+    animation: pulse 2.5s ease-in-out infinite;
+  }
+  #wake-status.armed { color: var(--tier-read); }
+  #wake-status.triggered .dot {
+    background: var(--tier-sensitive);
+    box-shadow: 0 0 8px var(--tier-sensitive);
+    animation: pulse-fast 0.5s ease-in-out infinite;
+  }
+  #wake-status.triggered { color: var(--tier-sensitive); }
+  #wake-status.error .dot { background: var(--tier-destructive); }
+  #wake-status.error { color: var(--tier-destructive); }
 </style>
 </head>
 <body>
@@ -231,6 +263,7 @@
 <header>
   <h1>ORION</h1>
   <div class="subtitle">Omni-Responsive Intelligence &amp; Operations Nexus</div>
+  <div id="wake-status"><span class="dot"></span><span id="wake-status-text">Wake word: off</span></div>
 </header>
 
 <div id="core-wrap"><div id="core"></div></div>
@@ -244,6 +277,11 @@
     <button id="send" type="submit">Send</button>
   </form>
 </div>
+
+<!-- Vendored (not CDN) — see WAKE_WORD_SETUP.md. IIFE builds, plain <script> tags,
+     no bundler needed: window.PorcupineWeb / window.WebVoiceProcessor. -->
+<script src="vendor/porcupine-web.min.js"></script>
+<script src="vendor/web-voice-processor.min.js"></script>
 
 <script>
   let conversationId = null;
@@ -407,6 +445,157 @@
   mic.addEventListener("mouseup", finishRecording);
   mic.addEventListener("mouseleave", finishRecording);
   mic.addEventListener("touchend", (e) => { e.preventDefault(); finishRecording(); });
+
+  // --- Wake word ("ORION") ---
+  // Client-side detection via Porcupine (vendored IIFE build, see
+  // SETUP.md) — audio never leaves the browser unless the wake word
+  // actually fires, at which point it hands off to the exact same
+  // sendRecording() path push-to-talk uses.
+  const wakeStatus = document.getElementById("wake-status");
+  const wakeStatusText = document.getElementById("wake-status-text");
+  let porcupine = null;
+  let wakeArmed = false;
+
+  function setWakeStatus(cls, text) {
+    wakeStatus.className = cls;
+    wakeStatusText.textContent = text;
+  }
+
+  // Simple amplitude-based auto-stop: record until the user has spoken and
+  // then gone quiet for SILENCE_MS, with a hard cap so a stuck mic can't
+  // record forever. This is what lets wake-triggered recording end itself —
+  // there's no button to release.
+  const SILENCE_MS = 1200;
+  const MAX_RECORDING_MS = 15000;
+  const SPEECH_RMS_THRESHOLD = 0.02;
+
+  async function recordUntilSilence() {
+    stopPlayback();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const audioCtx = new AudioContext();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
+    const buf = new Float32Array(analyser.fftSize);
+
+    const chunks = [];
+    const recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+    const done = new Promise((resolve) => {
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        audioCtx.close();
+        resolve(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }));
+      };
+    });
+
+    recorder.start();
+    mic.classList.add("recording");
+
+    let hasSpoken = false;
+    let silenceStart = null;
+    const startTime = Date.now();
+
+    await new Promise((resolve) => {
+      const tick = () => {
+        analyser.getFloatTimeDomainData(buf);
+        let sumSquares = 0;
+        for (let i = 0; i < buf.length; i++) sumSquares += buf[i] * buf[i];
+        const rms = Math.sqrt(sumSquares / buf.length);
+
+        const now = Date.now();
+        if (rms > SPEECH_RMS_THRESHOLD) {
+          hasSpoken = true;
+          silenceStart = null;
+        } else if (hasSpoken && silenceStart === null) {
+          silenceStart = now;
+        }
+
+        const elapsed = now - startTime;
+        const silentLongEnough = silenceStart !== null && now - silenceStart > SILENCE_MS;
+        if ((hasSpoken && silentLongEnough) || elapsed > MAX_RECORDING_MS) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
+    recorder.stop();
+    mic.classList.remove("recording");
+    return done;
+  }
+
+  async function onWakeWordDetected() {
+    if (!wakeArmed) return;
+    setWakeStatus("triggered", "ORION heard — listening...");
+    try {
+      await window.WebVoiceProcessor.WebVoiceProcessor.unsubscribe(porcupine);
+    } catch (err) { /* already unsubscribed */ }
+
+    try {
+      const blob = await recordUntilSilence();
+      await sendRecording(blob);
+    } catch (err) {
+      appendMessage("error", "Wake-word recording failed: " + err.message);
+    } finally {
+      if (wakeArmed) {
+        try {
+          await window.WebVoiceProcessor.WebVoiceProcessor.subscribe(porcupine);
+          setWakeStatus("armed", "Wake word: listening for “ORION”");
+        } catch (err) {
+          setWakeStatus("error", "Wake word: failed to resume (" + err.message + ")");
+        }
+      }
+    }
+  }
+
+  async function initWakeWord() {
+    if (!window.PorcupineWeb || !window.WebVoiceProcessor) {
+      setWakeStatus("", "Wake word: unavailable (vendor scripts missing)");
+      return;
+    }
+
+    let accessKey = "";
+    try {
+      const cfg = await (await fetch("/config/voice")).json();
+      accessKey = cfg.picovoice_access_key || "";
+    } catch (err) {
+      setWakeStatus("error", "Wake word: couldn't reach /config/voice");
+      return;
+    }
+    if (!accessKey) {
+      setWakeStatus("", "Wake word: not configured (see WAKE_WORD_SETUP.md)");
+      return;
+    }
+
+    const keywordPath = "models/orion_keyword.ppn";
+    const keywordCheck = await fetch(keywordPath, { method: "HEAD" }).catch(() => null);
+    if (!keywordCheck || !keywordCheck.ok) {
+      setWakeStatus("", "Wake word: keyword file missing (see WAKE_WORD_SETUP.md)");
+      return;
+    }
+
+    try {
+      porcupine = await window.PorcupineWeb.PorcupineWorker.create(
+        accessKey,
+        { publicPath: keywordPath, label: "orion" },
+        onWakeWordDetected,
+        { publicPath: "models/porcupine_params.pv" },
+        { processErrorCallback: (err) => setWakeStatus("error", "Wake word error: " + err) },
+      );
+      await window.WebVoiceProcessor.WebVoiceProcessor.subscribe(porcupine);
+      wakeArmed = true;
+      setWakeStatus("armed", "Wake word: listening for “ORION”");
+    } catch (err) {
+      setWakeStatus("error", "Wake word: init failed (" + err.message + ")");
+    }
+  }
+
+  initWakeWord();
 </script>
 </body>
 </html>

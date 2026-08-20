@@ -11,6 +11,7 @@ live in ./models, gitignored — see SETUP.md for how to fetch them.
 """
 
 import io
+import re
 from pathlib import Path
 
 import soundfile as sf
@@ -43,10 +44,38 @@ def preload() -> None:
     _get_kokoro()
 
 
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F300-\U0001FAFF"  # symbols, pictographs, emoticons, transport, supplemental
+    "\U00002600-\U000027BF"  # misc symbols, dingbats
+    "\U0001F1E6-\U0001F1FF"  # regional indicators
+    "\U0000FE0F"  # variation selector-16
+    "]+"
+)
+
+
+def _strip_markdown(text: str) -> str:
+    """Kokoro has no markdown awareness — it vocalizes '**' and '#' as literal
+    characters, and would either mangle or silently choke on emoji. The text
+    UI wants the raw markdown/emoji (it renders fine there); only the audio
+    path needs this."""
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)  # code blocks
+    text = re.sub(r"`([^`]+)`", r"\1", text)  # inline code
+    text = re.sub(r"^#{1,6}\s*", "", text, flags=re.MULTILINE)  # headers
+    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)  # bold
+    text = re.sub(r"(?<!\w)\*([^*]+)\*(?!\w)", r"\1", text)  # italic
+    text = re.sub(r"^[\s]*[-*+]\s+", "", text, flags=re.MULTILINE)  # bullets
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)  # [text](url)
+    text = _EMOJI_RE.sub("", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def synthesize(text: str) -> bytes:
     """Turn reply text into WAV audio bytes."""
     kokoro = _get_kokoro()
-    samples, sample_rate = kokoro.create(text, voice=VOICE, speed=1.0, lang="en-us")
+    samples, sample_rate = kokoro.create(_strip_markdown(text), voice=VOICE, speed=1.0, lang="en-us")
     buf = io.BytesIO()
     sf.write(buf, samples, sample_rate, format="WAV")
     return buf.getvalue()
