@@ -55,35 +55,126 @@
     text-transform: uppercase;
   }
 
-  /* Pulsing core */
+  /* ORION core — a real state machine (idle/listening/thinking/speaking),
+     driven by data-state on #core-wrap from actual system signals (see
+     setOrionState in the script), not decorative frontend-only states. */
   #core-wrap {
+    --emotion-color: var(--cyan);
+    --amplitude: 0;
+    position: relative;
+    width: 120px;
+    height: 120px;
     display: flex;
+    align-items: center;
     justify-content: center;
-    margin: 0.5rem 0 1.25rem;
+    margin: 0.5rem auto 1.25rem;
+  }
+
+  .core-ring {
+    position: absolute;
+    border: 1px solid var(--cyan-dim);
+    border-radius: 50%;
+    opacity: 0.18;
+  }
+  .ring-inner { width: 56px; height: 56px; }
+  .ring-mid   { width: 80px; height: 80px; }
+  .ring-outer { width: 106px; height: 106px; }
+
+  .particle-orbit {
+    position: absolute;
+    inset: 0;
+    transform: rotate(var(--angle));
+    pointer-events: none;
+  }
+  .particle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 3px;
+    height: 3px;
+    margin: -1.5px 0 0 -1.5px;
+    border-radius: 50%;
+    background: var(--cyan);
+    opacity: 0;
+    transform: translateX(50px);
   }
 
   #core {
-    width: 46px;
-    height: 46px;
+    position: relative;
+    z-index: 2;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
-    background: radial-gradient(circle at 50% 50%, var(--cyan) 0%, var(--cyan-dim) 55%, transparent 75%);
-    box-shadow: 0 0 18px 4px rgba(77, 243, 255, 0.55);
-    animation: pulse 3s ease-in-out infinite;
+    background: radial-gradient(circle at 50% 50%, var(--emotion-color) 0%, var(--cyan-dim) 55%, transparent 75%);
+    box-shadow: 0 0 18px 4px color-mix(in srgb, var(--emotion-color) 55%, transparent);
+    transition: box-shadow 0.4s ease, background 0.4s ease;
   }
 
-  #core.active {
-    animation: pulse-fast 0.7s ease-in-out infinite;
-    box-shadow: 0 0 30px 10px rgba(77, 243, 255, 0.85);
+  /* IDLE — calm, never fully static */
+  #core-wrap[data-state="idle"] #core { animation: idle-breathe 4s ease-in-out infinite; }
+  #core-wrap[data-state="idle"] .core-ring { animation: idle-ring-drift 7s ease-in-out infinite; }
+  #core-wrap[data-state="idle"] .particle { opacity: 0.18; }
+  @keyframes idle-breathe {
+    0%, 100% { transform: scale(0.88); }
+    50% { transform: scale(1.04); }
+  }
+  @keyframes idle-ring-drift {
+    0%, 100% { opacity: 0.12; transform: scale(1); }
+    50% { opacity: 0.22; transform: scale(1.03); }
   }
 
-  @keyframes pulse {
-    0%, 100% { transform: scale(0.85); opacity: 0.7; }
-    50% { transform: scale(1.05); opacity: 1; }
+  /* LISTENING — attentive: rings pulse outward like sonar, particles
+     drawn slightly inward, waveform-reactive via --amplitude from the
+     mic's own analyser (see startRecording). */
+  #core-wrap[data-state="listening"] #core {
+    animation: listen-pulse 1s ease-in-out infinite;
+    box-shadow: 0 0 calc(20px + var(--amplitude) * 24px) calc(6px + var(--amplitude) * 10px) color-mix(in srgb, var(--emotion-color) 70%, transparent);
+  }
+  @keyframes listen-pulse {
+    0%, 100% { transform: scale(0.95); }
+    50% { transform: scale(1.06); }
+  }
+  #core-wrap[data-state="listening"] .core-ring {
+    border-color: var(--cyan);
+    animation: listen-ring-expand 1.5s ease-out infinite;
+  }
+  #core-wrap[data-state="listening"] .ring-mid { animation-delay: 0.3s; }
+  #core-wrap[data-state="listening"] .ring-outer { animation-delay: 0.6s; }
+  @keyframes listen-ring-expand {
+    0% { transform: scale(0.7); opacity: 0.55; }
+    100% { transform: scale(1.12); opacity: 0; }
+  }
+  #core-wrap[data-state="listening"] .particle {
+    opacity: 0.55;
+    animation: listen-converge 1.5s ease-in-out infinite;
+  }
+  @keyframes listen-converge {
+    0%, 100% { transform: translateX(50px); }
+    50% { transform: translateX(40px); }
   }
 
-  @keyframes pulse-fast {
-    0%, 100% { transform: scale(0.8); opacity: 0.75; }
-    50% { transform: scale(1.15); opacity: 1; }
+  /* THINKING — orbital motion at staggered speeds, center stays stable */
+  #core-wrap[data-state="thinking"] #core { animation: idle-breathe 2s ease-in-out infinite; }
+  #core-wrap[data-state="thinking"] .particle { opacity: 0.7; }
+  #core-wrap[data-state="thinking"] .particle-orbit { animation: spin 3.2s linear infinite; }
+  #core-wrap[data-state="thinking"] .particle-orbit:nth-child(even) { animation-duration: 4.4s; animation-direction: reverse; }
+  @keyframes spin { to { transform: rotate(calc(var(--angle) + 360deg)); } }
+  #core-wrap[data-state="thinking"] .core-ring { opacity: 0.2; }
+
+  /* SPEAKING — core reacts to real playback amplitude via --amplitude,
+     driven per animation-frame from a Web Audio analyser on the actual
+     playing audio (see playReplyAudio). Not a canned animation. */
+  #core-wrap[data-state="speaking"] #core {
+    transform: scale(calc(1 + var(--amplitude) * 0.4));
+    box-shadow: 0 0 calc(18px + var(--amplitude) * 34px) calc(4px + var(--amplitude) * 12px) color-mix(in srgb, var(--emotion-color) 70%, transparent);
+  }
+  #core-wrap[data-state="speaking"] .core-ring {
+    border-color: var(--emotion-color);
+    opacity: calc(0.15 + var(--amplitude) * 0.45);
+    transform: scale(calc(1 + var(--amplitude) * 0.12));
+  }
+  #core-wrap[data-state="speaking"] .particle {
+    opacity: calc(0.3 + var(--amplitude) * 0.5);
   }
 
   /* HUD frame around the chat log */
@@ -177,12 +268,22 @@
     font-size: 0.72rem;
   }
 
+  .tool-service {
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    color: var(--text-dim);
+    margin-top: 0.5rem;
+  }
+  .tool-service:first-child { margin-top: 0; }
+  .tool-service::before { content: "\21B3 "; opacity: 0.6; }
+
   .tool-log .tool-line {
     display: flex;
     align-items: center;
     gap: 0.4rem;
     color: var(--text-dim);
     margin-top: 0.15rem;
+    padding-left: 1rem;
   }
 
   .tool-line .dot {
@@ -332,7 +433,20 @@
   <div id="wake-status"><span class="dot"></span><span id="wake-status-text">Wake word: off</span></div>
 </header>
 
-<div id="core-wrap"><div id="core"></div></div>
+<div id="core-wrap" data-state="idle">
+  <div class="core-ring ring-outer"></div>
+  <div class="core-ring ring-mid"></div>
+  <div class="core-ring ring-inner"></div>
+  <div class="particle-orbit" style="--angle: 0deg"><span class="particle"></span></div>
+  <div class="particle-orbit" style="--angle: 45deg"><span class="particle"></span></div>
+  <div class="particle-orbit" style="--angle: 90deg"><span class="particle"></span></div>
+  <div class="particle-orbit" style="--angle: 135deg"><span class="particle"></span></div>
+  <div class="particle-orbit" style="--angle: 180deg"><span class="particle"></span></div>
+  <div class="particle-orbit" style="--angle: 225deg"><span class="particle"></span></div>
+  <div class="particle-orbit" style="--angle: 270deg"><span class="particle"></span></div>
+  <div class="particle-orbit" style="--angle: 315deg"><span class="particle"></span></div>
+  <div id="core"></div>
+</div>
 
 <div id="hud">
   <span class="corner-bl"></span><span class="corner-br"></span>
@@ -354,7 +468,47 @@
   const log = document.getElementById("log");
   const form = document.getElementById("form");
   const input = document.getElementById("input");
-  const core = document.getElementById("core");
+  const coreWrap = document.getElementById("core-wrap");
+
+  // --- ORION core state machine ---
+  // data-state on #core-wrap drives every animation in the CSS above;
+  // this is the one place that sets it, from real signals elsewhere in
+  // this script (recording started, a fetch is in flight, audio is
+  // actually playing) — never a decorative frontend-only state.
+  const EMOTION_COLORS = {
+    neutral: "#4df3ff",
+    confident: "#3ddc97",
+    concerned: "#ff9f43",
+    serious: "#ff4d6d",
+  };
+
+  function setOrionState(state, emotion) {
+    coreWrap.dataset.state = state;
+    coreWrap.style.setProperty("--emotion-color", EMOTION_COLORS[emotion] || EMOTION_COLORS.neutral);
+    mic.classList.toggle("recording", state === "listening");
+  }
+
+  // Shared by the listening-amplitude (mic input) and speaking-amplitude
+  // (reply audio output) visualizations — samples RMS from a Web Audio
+  // analyser once per frame and writes it to --amplitude, which the CSS
+  // above reads directly. Real audio-reactive visuals, not a canned pulse.
+  function startAmplitudeLoop(analyser) {
+    const buf = new Float32Array(analyser.fftSize);
+    let rafId;
+    const tick = () => {
+      analyser.getFloatTimeDomainData(buf);
+      let sumSquares = 0;
+      for (let i = 0; i < buf.length; i++) sumSquares += buf[i] * buf[i];
+      const rms = Math.sqrt(sumSquares / buf.length);
+      coreWrap.style.setProperty("--amplitude", Math.min(1, rms * 6).toFixed(3));
+      rafId = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => {
+      cancelAnimationFrame(rafId);
+      coreWrap.style.setProperty("--amplitude", "0");
+    };
+  }
 
   function escapeHtml(text) {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -421,21 +575,50 @@
     return div;
   }
 
+  // Contextual HUD: group tool activity by the service it belongs to
+  // (ORION > GMAIL > gmail_search [READ]) rather than a flat list — this
+  // is what the spec's "reveal information dynamically based on context"
+  // actually means for the one signal we have it for. It only appears
+  // after a response arrives (the full tool_calls list, all at once);
+  // showing which *specific* tool is running live, mid-request, would
+  // need a streaming/WebSocket architecture this app doesn't have.
+  function serviceForTool(name) {
+    if (name.startsWith("calendar_")) return "CALENDAR";
+    if (name.startsWith("gmail_")) return "GMAIL";
+    if (name.startsWith("task_")) return "TASKS";
+    if (name.startsWith("web_")) return "WEB";
+    if (name === "list_files" || name === "read_file") return "FILESYSTEM";
+    return "CODING"; // code_*, write_file, edit_file, search_code, run_command, run_tests, git_*
+  }
+
   function appendToolLog(container, toolCalls) {
     if (!toolCalls || toolCalls.length === 0) return;
+    const groups = new Map();
+    for (const call of toolCalls) {
+      const service = serviceForTool(call.name);
+      if (!groups.has(service)) groups.set(service, []);
+      groups.get(service).push(call);
+    }
+
     const wrap = document.createElement("div");
     wrap.className = "tool-log";
-    for (const call of toolCalls) {
-      const line = document.createElement("div");
-      line.className = "tool-line";
-      const dot = document.createElement("span");
-      dot.className = "dot tier-" + call.tier;
-      const label = document.createElement("span");
-      label.className = "tier-" + call.tier;
-      label.textContent = call.name + " [" + call.tier + "]";
-      line.appendChild(dot);
-      line.appendChild(label);
-      wrap.appendChild(line);
+    for (const [service, calls] of groups) {
+      const serviceLine = document.createElement("div");
+      serviceLine.className = "tool-service";
+      serviceLine.textContent = service;
+      wrap.appendChild(serviceLine);
+      for (const call of calls) {
+        const line = document.createElement("div");
+        line.className = "tool-line";
+        const dot = document.createElement("span");
+        dot.className = "dot tier-" + call.tier;
+        const label = document.createElement("span");
+        label.className = "tier-" + call.tier;
+        label.textContent = call.name + (call.denied ? " (denied)" : "") + " [" + call.tier + "]";
+        line.appendChild(dot);
+        line.appendChild(label);
+        wrap.appendChild(line);
+      }
     }
     container.appendChild(wrap);
   }
@@ -478,7 +661,7 @@
     const resolve = async (approved) => {
       approveBtn.disabled = true;
       denyBtn.disabled = true;
-      core.classList.add("active");
+      setOrionState("thinking");
       const thinking = appendMessage("assistant", "...");
       try {
         const response = await fetch("/chat/confirm", {
@@ -493,13 +676,51 @@
       } catch (err) {
         thinking.remove();
         appendMessage("error", "Confirmation failed: " + err.message);
-      } finally {
-        core.classList.remove("active");
+        setOrionState("idle");
       }
     };
 
     approveBtn.addEventListener("click", () => resolve(true));
     denyBtn.addEventListener("click", () => resolve(false));
+  }
+
+  // Plays a reply's synthesized audio with a real Web Audio analyser
+  // driving the SPEAKING state's --amplitude — falls back to plain
+  // playback with no visual reactivity if the analyser wiring fails
+  // (autoplay/permission quirks vary by browser and can't be tested
+  // from here), since actual playback is what matters functionally.
+  let audioCtx = null;
+  function playReplyAudio(base64Audio, emotion) {
+    const audio = new Audio("data:audio/wav;base64," + base64Audio);
+    currentAudio = audio;
+
+    audio.addEventListener("play", () => {
+      setOrionState("speaking", emotion);
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaElementSource(audio);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        stopAmplitudeLoop = startAmplitudeLoop(analyser);
+      } catch (err) {
+        // Audio still plays via the plain element above — just without
+        // amplitude-reactive visuals.
+      }
+    });
+
+    const onEnd = () => {
+      if (stopAmplitudeLoop) { stopAmplitudeLoop(); stopAmplitudeLoop = null; }
+      if (currentAudio === audio) {
+        currentAudio = null;
+        setOrionState("idle", emotion);
+      }
+    };
+    audio.addEventListener("ended", onEnd);
+    audio.addEventListener("pause", onEnd);
+
+    audio.play().catch(() => {});
   }
 
   // Shared by text chat, voice, and the confirm buttons — a response is
@@ -510,14 +731,18 @@
     conversationId = data.conversation_id;
     if (data.status === "pending_confirmation") {
       renderPendingConfirmation(data);
+      // Idle, but tinted by emotion (serious/concerned) so the core
+      // visually reflects the pending action while awaiting the human.
+      setOrionState("idle", data.emotion);
       return;
     }
     const assistantDiv = appendMessage("assistant", data.reply);
     appendToolLog(assistantDiv, data.tool_calls);
     log.scrollTop = log.scrollHeight;
     if (opts.playAudio && data.audio_base64) {
-      currentAudio = new Audio("data:audio/wav;base64," + data.audio_base64);
-      currentAudio.play().catch(() => {});
+      playReplyAudio(data.audio_base64, data.emotion);
+    } else {
+      setOrionState("idle", data.emotion);
     }
   }
 
@@ -529,7 +754,7 @@
     appendMessage("user", message);
 
     const thinking = appendMessage("assistant", "...");
-    core.classList.add("active");
+    setOrionState("thinking");
 
     try {
       const response = await fetch("/chat", {
@@ -546,8 +771,7 @@
     } catch (err) {
       thinking.remove();
       appendMessage("error", "Failed to get a reply: " + err.message);
-    } finally {
-      core.classList.remove("active");
+      setOrionState("idle");
     }
   });
 
@@ -556,6 +780,8 @@
   let mediaRecorder = null;
   let chunks = [];
   let currentAudio = null;
+  let stopAmplitudeLoop = null;
+  let stopListeningAmplitude = null;
 
   function stopPlayback() {
     // "Starting a new recording immediately stops any in-progress audio
@@ -563,6 +789,10 @@
     if (currentAudio) {
       currentAudio.pause();
       currentAudio = null;
+    }
+    if (stopAmplitudeLoop) {
+      stopAmplitudeLoop();
+      stopAmplitudeLoop = null;
     }
   }
 
@@ -580,22 +810,34 @@
     mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
     mediaRecorder.onstop = () => {
       stream.getTracks().forEach((t) => t.stop());
+      if (stopListeningAmplitude) { stopListeningAmplitude(); stopListeningAmplitude = null; }
       sendRecording(new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" }));
     };
     mediaRecorder.start();
-    mic.classList.add("recording");
+    setOrionState("listening");
+
+    // Real mic-input amplitude for the LISTENING visual — best-effort:
+    // if analyser setup fails for any reason, recording still proceeds
+    // fine without the waveform reactivity.
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+      stopListeningAmplitude = startAmplitudeLoop(analyser);
+    } catch (err) { /* no waveform reactivity, recording still works */ }
   }
 
   function finishRecording() {
     if (mediaRecorder && mediaRecorder.state !== "inactive") {
       mediaRecorder.stop();
     }
-    mic.classList.remove("recording");
   }
 
   async function sendRecording(blob) {
     mic.classList.add("processing");
-    core.classList.add("active");
+    setOrionState("thinking");
     const thinking = appendMessage("assistant", "...");
 
     try {
@@ -621,9 +863,9 @@
     } catch (err) {
       thinking.remove();
       appendMessage("error", "Voice request failed: " + err.message);
+      setOrionState("idle");
     } finally {
       mic.classList.remove("processing");
-      core.classList.remove("active");
     }
   }
 
@@ -679,7 +921,7 @@
     });
 
     recorder.start();
-    mic.classList.add("recording");
+    setOrionState("listening");
 
     let hasSpoken = false;
     let silenceStart = null;
@@ -691,6 +933,9 @@
         let sumSquares = 0;
         for (let i = 0; i < buf.length; i++) sumSquares += buf[i] * buf[i];
         const rms = Math.sqrt(sumSquares / buf.length);
+        // Same analyser drives both the silence-detection cutoff and the
+        // LISTENING visual's --amplitude — no need for a second one.
+        coreWrap.style.setProperty("--amplitude", Math.min(1, rms * 6).toFixed(3));
 
         const now = Date.now();
         if (rms > SPEECH_RMS_THRESHOLD) {
@@ -712,7 +957,7 @@
     });
 
     recorder.stop();
-    mic.classList.remove("recording");
+    coreWrap.style.setProperty("--amplitude", "0");
     return done;
   }
 
