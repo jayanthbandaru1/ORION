@@ -81,6 +81,12 @@ class ChatResponse(BaseModel):
     tool_calls: list[ToolCallInfo] | None = None
     confirmation_id: str | None = None
     pending_actions: list[PendingAction] | None = None
+    # v1.1 personality layer — one of core/orchestrator.py's
+    # _classify_emotion outputs, derived from what actually happened this
+    # turn (not the LLM self-reporting a mood). Drives TTS speed/pacing in
+    # /chat/voice and the core's color/intensity in the UI, from the same
+    # signal, on every response including text-only ones.
+    emotion: str | None = None
 
 
 class VoiceChatResponse(ChatResponse):
@@ -96,6 +102,7 @@ def _to_chat_response(result: dict[str, Any]) -> ChatResponse:
         tool_calls=result.get("tool_calls") or None,
         confirmation_id=result.get("confirmation_id"),
         pending_actions=result.get("pending_actions"),
+        emotion=result.get("emotion"),
     )
 
 
@@ -136,7 +143,11 @@ async def chat_voice(
 
     # No audio to synthesize yet if this turn paused for confirmation —
     # there's no reply text until the human approves or denies it.
-    audio_b64 = base64.b64encode(tts.synthesize(base.reply)).decode() if base.reply else None
+    audio_b64 = (
+        base64.b64encode(tts.synthesize(base.reply, emotion=base.emotion or "neutral")).decode()
+        if base.reply
+        else None
+    )
 
     return VoiceChatResponse(**base.model_dump(), transcribed_text=text, audio_base64=audio_b64)
 

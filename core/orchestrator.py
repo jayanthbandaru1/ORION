@@ -95,6 +95,27 @@ def _serialize_message(message) -> dict[str, Any]:
     return message.model_dump(exclude_none=True, mode="json")
 
 
+# v1.1's personality layer: a deliberately small set, each branch tied to a
+# real signal from this turn (a denial, a tool error, a consequential action
+# that actually ran) rather than the LLM self-reporting a mood. This is not
+# the full emotion list the spec names (AMUSED, CURIOUS, SARCASTIC, ...) —
+# those would have to be invented from nothing we actually observe, and
+# "don't pretend it's easy" cuts against faking granularity we don't have.
+# interfaces/voice/tts.py maps these onto the only real levers Kokoro
+# exposes: speed and inter-sentence/clause pause length — there's no pitch,
+# volume, or per-word emphasis control in this TTS engine to hook into.
+def _classify_emotion(tool_calls_made: list[dict], pending_actions: list[dict] | None = None) -> str:
+    if pending_actions:
+        return "serious"  # a SENSITIVE/DESTRUCTIVE action is awaiting approval right now
+    if any(call.get("denied") for call in tool_calls_made):
+        return "concerned"  # the user just said no to something
+    if any(call.get("error") for call in tool_calls_made):
+        return "concerned"  # something failed this turn
+    if any(call.get("tier") in permissions.NEEDS_CONFIRMATION for call in tool_calls_made):
+        return "confident"  # a real, consequential action just completed
+    return "neutral"
+
+
 class OllamaUnavailableError(Exception):
     """Ollama isn't reachable (not started, wrong port, etc.) — distinct from
     a normal tool/API error so the caller can show a clear, specific message
@@ -173,12 +194,14 @@ class Orchestrator:
             client = self.tool_to_client.get(name)
             if client is None:
                 result_text = f"Error: no tool named '{name}' is registered — the model may have hallucinated a tool name."
+                tool_calls_made[-1]["error"] = True
             else:
                 try:
                     result = await client.call_tool(name, args)
                     result_text = _extract_text(result)
                 except Exception as exc:  # noqa: BLE001 — surface the error to the model, not a crash
                     result_text = f"Error running {name}: {exc}"
+                    tool_calls_made[-1]["error"] = True
 
             messages.append({"role": "tool", "content": result_text})
             store.add_message(conversation_id, "tool", result_text)
@@ -214,19 +237,21 @@ class Orchestrator:
                     "tool_calls_made": tool_calls_made,
                     "rounds": rounds,
                 }
+                pending_actions = [
+                    {
+                        "name": call["function"]["name"],
+                        "arguments": call["function"]["arguments"],
+                        "tier": tier,
+                        "description": permissions.describe_action(call["function"]["name"], call["function"]["arguments"]),
+                    }
+                    for call, tier in needs_confirmation
+                ]
                 return {
                     "status": "pending_confirmation",
                     "conversation_id": conversation_id,
                     "confirmation_id": confirmation_id,
-                    "pending_actions": [
-                        {
-                            "name": call["function"]["name"],
-                            "arguments": call["function"]["arguments"],
-                            "tier": tier,
-                            "description": permissions.describe_action(call["function"]["name"], call["function"]["arguments"]),
-                        }
-                        for call, tier in needs_confirmation
-                    ],
+                    "pending_actions": pending_actions,
+                    "emotion": _classify_emotion(tool_calls_made, pending_actions),
                 }
 
             await self._execute_batch(conversation_id, messages, calls, tool_calls_made)
@@ -241,6 +266,7 @@ class Orchestrator:
             "conversation_id": conversation_id,
             "reply": assistant_message["content"],
             "tool_calls": tool_calls_made,
+            "emotion": _classify_emotion(tool_calls_made),
         }
 
     async def chat(self, user_message: str, conversation_id: int | None = None) -> dict[str, Any]:

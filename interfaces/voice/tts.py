@@ -72,10 +72,36 @@ def _strip_markdown(text: str) -> str:
     return text.strip()
 
 
-def synthesize(text: str) -> bytes:
-    """Turn reply text into WAV audio bytes."""
+# The only real levers Kokoro exposes are speed and inter-sentence/clause
+# pause length — no pitch, volume, or emphasis control exists in this
+# engine. This is the whole personality layer's actual mechanism, not a
+# simplification of a richer one: core/orchestrator.py's _classify_emotion
+# derives one of these four from real signals in the turn (a denial, a
+# tool error, a consequential action completing, or plain neutral), and
+# this table is where that becomes an audible difference.
+_EMOTION_PARAMS = {
+    # (speed, sentence_pause, clause_pause)
+    "neutral": (1.0, 0.25, 0.10),
+    "confident": (1.05, 0.20, 0.08),  # a real action just completed — slightly brisker
+    "concerned": (0.92, 0.35, 0.15),  # something failed or was denied — slower, more deliberate
+    "serious": (0.90, 0.40, 0.18),  # a SENSITIVE/DESTRUCTIVE action awaits approval — most deliberate
+}
+
+
+def synthesize(text: str, emotion: str = "neutral") -> bytes:
+    """Turn reply text into WAV audio bytes. emotion is one of
+    core/orchestrator.py's _classify_emotion outputs; unrecognized values
+    fall back to neutral rather than raising."""
+    speed, sentence_pause, clause_pause = _EMOTION_PARAMS.get(emotion, _EMOTION_PARAMS["neutral"])
     kokoro = _get_kokoro()
-    samples, sample_rate = kokoro.create(_strip_markdown(text), voice=VOICE, speed=1.0, lang="en-us")
+    samples, sample_rate = kokoro.create(
+        _strip_markdown(text),
+        voice=VOICE,
+        speed=speed,
+        lang="en-us",
+        sentence_pause=sentence_pause,
+        clause_pause=clause_pause,
+    )
     buf = io.BytesIO()
     sf.write(buf, samples, sample_rate, format="WAV")
     return buf.getvalue()
