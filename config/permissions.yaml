@@ -1,0 +1,57 @@
+# Maps each MCP tool name to a permission tier.
+# Tiers (least to most dangerous): READ, SAFE, REVERSIBLE, SENSITIVE, DESTRUCTIVE
+# Logged on every call (core/permissions.py). Real interactive
+# confirmation for SENSITIVE/DESTRUCTIVE is Phase 4 — until then those
+# tiers are logged but not blocked.
+
+# Phase 0/1 — filesystem, web search/fetch
+list_files: READ
+read_file: READ
+web_search: READ
+web_fetch: READ
+
+# Phase 2 — Google Calendar
+calendar_get_events: READ
+calendar_search: READ
+calendar_find_free_time: READ
+calendar_create_event: SENSITIVE
+calendar_update_event: SENSITIVE
+calendar_delete_event: DESTRUCTIVE
+
+# Phase 2 — Gmail
+gmail_search: READ
+gmail_get_message: READ
+gmail_get_thread: READ
+gmail_create_draft: SAFE
+gmail_update_draft: SAFE
+gmail_send_draft: SENSITIVE
+
+# Phase 2 — Tasks/reminders
+task_list: READ
+task_create: SAFE
+task_update: SAFE
+task_complete: SAFE
+task_delete: REVERSIBLE
+
+# Phase 2 — Coding tools (mcp_servers/coding/). list_files/read_file are
+# named code_list_files/code_read_file here — Ollama's tool namespace is
+# flat across every connected MCP server, so the Phase 0 filesystem
+# server's names couldn't be reused without colliding.
+code_list_files: READ
+code_read_file: READ
+write_file: SENSITIVE
+edit_file: SENSITIVE
+search_code: READ
+run_tests: SAFE
+git_status: READ
+git_diff: READ
+git_log: READ
+
+# run_command is SENSITIVE by default; classify_tool_call() in
+# core/permissions.py grants SAFE only when the first word of the
+# command is in this allowlist.
+run_command: SENSITIVE
+run_command_allowlist:
+  - pytest
+  - python
+  - git

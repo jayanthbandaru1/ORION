@@ -1,0 +1,16 @@
+# MCP servers the orchestrator connects to at startup. Each is
+# launched as its own stdio subprocess; add a new server here rather
+# than hardcoding its path in orchestrator.py.
+
+- name: filesystem
+  path: mcp_servers/filesystem_server.py
+- name: web
+  path: mcp_servers/web_server.py
+- name: calendar
+  path: mcp_servers/calendar/server.py
+- name: gmail
+  path: mcp_servers/gmail/server.py
+- name: tasks
+  path: mcp_servers/tasks/server.py
+- name: coding
+  path: mcp_servers/coding/server.py

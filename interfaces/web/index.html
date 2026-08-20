@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ORION</title>
+<style>
+  :root {
+    --bg: #04070a;
+    --panel: #070d12;
+    --border: #113a44;
+    --cyan: #4df3ff;
+    --cyan-dim: #1c8a9a;
+    --text: #cdeff5;
+    --text-dim: #6f98a1;
+    --tier-read: #3ddc97;
+    --tier-safe: #4fd6ff;
+    --tier-reversible: #ffd166;
+    --tier-sensitive: #ff9f43;
+    --tier-destructive: #ff4d6d;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: radial-gradient(ellipse at 50% -10%, #0a1820 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: "Consolas", "SFMono-Regular", ui-monospace, monospace;
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 1.25rem;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 1.6rem;
+    letter-spacing: 0.4em;
+    color: var(--cyan);
+    text-shadow: 0 0 12px rgba(77, 243, 255, 0.6), 0 0 30px rgba(77, 243, 255, 0.25);
+    font-weight: 600;
+  }
+
+  header .subtitle {
+    margin-top: 0.35rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  /* Pulsing core */
+  #core-wrap {
+    display: flex;
+    justify-content: center;
+    margin: 0.5rem 0 1.25rem;
+  }
+
+  #core {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, var(--cyan) 0%, var(--cyan-dim) 55%, transparent 75%);
+    box-shadow: 0 0 18px 4px rgba(77, 243, 255, 0.55);
+    animation: pulse 3s ease-in-out infinite;
+  }
+
+  #core.active {
+    animation: pulse-fast 0.7s ease-in-out infinite;
+    box-shadow: 0 0 30px 10px rgba(77, 243, 255, 0.85);
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(0.85); opacity: 0.7; }
+    50% { transform: scale(1.05); opacity: 1; }
+  }
+
+  @keyframes pulse-fast {
+    0%, 100% { transform: scale(0.8); opacity: 0.75; }
+    50% { transform: scale(1.15); opacity: 1; }
+  }
+
+  /* HUD frame around the chat log */
+  #hud {
+    position: relative;
+    width: min(720px, 100%);
+    padding: 1.5rem;
+    background: linear-gradient(180deg, rgba(10, 24, 30, 0.6), rgba(4, 8, 10, 0.6));
+    border: 1px solid var(--border);
+    box-shadow: inset 0 0 40px rgba(77, 243, 255, 0.04);
+  }
+
+  #hud::before, #hud::after,
+  #hud .corner-br, #hud .corner-bl {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border-color: var(--cyan);
+    border-style: solid;
+    opacity: 0.85;
+  }
+  #hud::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+  #hud::after  { top: -1px; right: -1px; border-width: 2px 2px 0 0; }
+  #hud .corner-bl { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; }
+  #hud .corner-br { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+
+  #log {
+    height: 56vh;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  #log::-webkit-scrollbar { width: 6px; }
+  #log::-webkit-scrollbar-thumb { background: var(--cyan-dim); }
+
+  .msg { margin-bottom: 1rem; white-space: pre-wrap; line-height: 1.5; font-size: 0.92rem; }
+
+  .msg .role {
+    display: block;
+    font-size: 0.68rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.2rem;
+  }
+
+  .msg.user { text-align: right; }
+  .msg.user .role { color: var(--text-dim); }
+  .msg.user .content { color: var(--text); }
+
+  .msg.assistant { border-left: 2px solid var(--cyan-dim); padding-left: 0.75rem; }
+  .msg.assistant .role { color: var(--cyan); }
+
+  .msg.error { border-left: 2px solid var(--tier-destructive); padding-left: 0.75rem; }
+  .msg.error .role { color: var(--tier-destructive); }
+
+  .tool-log {
+    margin-top: 0.4rem;
+    font-size: 0.72rem;
+  }
+
+  .tool-log .tool-line {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-dim);
+    margin-top: 0.15rem;
+  }
+
+  .tool-line .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    box-shadow: 0 0 6px currentColor;
+    flex: none;
+  }
+
+  .tier-READ { color: var(--tier-read); }
+  .tier-SAFE { color: var(--tier-safe); }
+  .tier-REVERSIBLE { color: var(--tier-reversible); }
+  .tier-SENSITIVE { color: var(--tier-sensitive); }
+  .tier-DESTRUCTIVE { color: var(--tier-destructive); }
+
+  #form { display: flex; gap: 0.6rem; }
+
+  #input {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.6rem 0.75rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    outline: none;
+  }
+  #input:focus { border-color: var(--cyan); box-shadow: 0 0 10px rgba(77, 243, 255, 0.35); }
+
+  #send {
+    background: transparent;
+    border: 1px solid var(--cyan-dim);
+    color: var(--cyan);
+    padding: 0.6rem 1.2rem;
+    font-family: inherit;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+  #send:hover { background: rgba(77, 243, 255, 0.1); border-color: var(--cyan); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ORION</h1>
+  <div class="subtitle">Omni-Responsive Intelligence &amp; Operations Nexus</div>
+</header>
+
+<div id="core-wrap"><div id="core"></div></div>
+
+<div id="hud">
+  <span class="corner-bl"></span><span class="corner-br"></span>
+  <div id="log"></div>
+  <form id="form">
+    <input id="input" type="text" autocomplete="off" placeholder="Say something..." />
+    <button id="send" type="submit">Send</button>
+  </form>
+</div>
+
+<script>
+  let conversationId = null;
+  const log = document.getElementById("log");
+  const form = document.getElementById("form");
+  const input = document.getElementById("input");
+  const core = document.getElementById("core");
+
+  function appendMessage(role, text) {
+    const div = document.createElement("div");
+    div.className = "msg " + role;
+    const roleLabel = document.createElement("span");
+    roleLabel.className = "role";
+    roleLabel.textContent = role;
+    const content = document.createElement("span");
+    content.className = "content";
+    content.textContent = text;
+    div.appendChild(roleLabel);
+    div.appendChild(content);
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    return div;
+  }
+
+  function appendToolLog(container, toolCalls) {
+    if (!toolCalls || toolCalls.length === 0) return;
+    const wrap = document.createElement("div");
+    wrap.className = "tool-log";
+    for (const call of toolCalls) {
+      const line = document.createElement("div");
+      line.className = "tool-line";
+      const dot = document.createElement("span");
+      dot.className = "dot tier-" + call.tier;
+      const label = document.createElement("span");
+      label.className = "tier-" + call.tier;
+      label.textContent = call.name + " [" + call.tier + "]";
+      line.appendChild(dot);
+      line.appendChild(label);
+      wrap.appendChild(line);
+    }
+    container.appendChild(wrap);
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const message = input.value.trim();
+    if (!message) return;
+    input.value = "";
+    appendMessage("user", message);
+
+    const thinking = appendMessage("assistant", "...");
+    core.classList.add("active");
+
+    try {
+      const response = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, conversation_id: conversationId }),
+      });
+      if (!response.ok) {
+        throw new Error("HTTP " + response.status);
+      }
+      const data = await response.json();
+      conversationId = data.conversation_id;
+      thinking.remove();
+      const assistantDiv = appendMessage("assistant", data.reply);
+      appendToolLog(assistantDiv, data.tool_calls);
+      log.scrollTop = log.scrollHeight;
+    } catch (err) {
+      thinking.remove();
+      appendMessage("error", "Failed to get a reply: " + err.message);
+    } finally {
+      core.classList.remove("active");
+    }
+  });
+</script>
+</body>
+</html>

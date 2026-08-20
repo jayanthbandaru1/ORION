@@ -1,0 +1,7 @@
+This is ORION's sandbox directory.
+
+Anything the filesystem MCP tool reads or lists is scoped to this
+folder and its subfolders — nothing outside it is reachable.
+
+If you're reading this because ORION answered a question about
+this file's contents, Phase 0 is working.
