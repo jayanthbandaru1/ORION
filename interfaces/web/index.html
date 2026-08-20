@@ -194,6 +194,36 @@
     cursor: pointer;
   }
   #send:hover { background: rgba(77, 243, 255, 0.1); border-color: var(--cyan); }
+
+  #mic {
+    background: transparent;
+    border: 1px solid var(--cyan-dim);
+    color: var(--cyan);
+    width: 42px;
+    flex: none;
+    font-family: inherit;
+    font-size: 1rem;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  #mic:hover { background: rgba(77, 243, 255, 0.1); border-color: var(--cyan); }
+  #mic.recording {
+    background: rgba(255, 77, 109, 0.15);
+    border-color: var(--tier-destructive);
+    color: var(--tier-destructive);
+    box-shadow: 0 0 14px rgba(255, 77, 109, 0.55);
+    animation: pulse-fast 0.7s ease-in-out infinite;
+  }
+  #mic.processing {
+    border-color: var(--tier-sensitive);
+    color: var(--tier-sensitive);
+  }
+
+  .msg.voice .role::after {
+    content: " \1F3A4";
+  }
 </style>
 </head>
 <body>
@@ -210,6 +240,7 @@
   <div id="log"></div>
   <form id="form">
     <input id="input" type="text" autocomplete="off" placeholder="Say something..." />
+    <button id="mic" type="button" title="Hold to talk">&#127908;</button>
     <button id="send" type="submit">Send</button>
   </form>
 </div>
@@ -288,6 +319,94 @@
       core.classList.remove("active");
     }
   });
+
+  // --- Push-to-talk voice ---
+  const mic = document.getElementById("mic");
+  let mediaRecorder = null;
+  let chunks = [];
+  let currentAudio = null;
+
+  function stopPlayback() {
+    // "Starting a new recording immediately stops any in-progress audio
+    // playback" — the beta's whole interruption-handling requirement.
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+    }
+  }
+
+  async function startRecording() {
+    stopPlayback();
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      appendMessage("error", "Microphone access denied or unavailable: " + err.message);
+      return;
+    }
+    chunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      sendRecording(new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" }));
+    };
+    mediaRecorder.start();
+    mic.classList.add("recording");
+  }
+
+  function finishRecording() {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+      mediaRecorder.stop();
+    }
+    mic.classList.remove("recording");
+  }
+
+  async function sendRecording(blob) {
+    mic.classList.add("processing");
+    core.classList.add("active");
+    const thinking = appendMessage("assistant", "...");
+
+    try {
+      const form = new FormData();
+      form.append("audio", blob, "recording.webm");
+      if (conversationId !== null) form.append("conversation_id", conversationId);
+
+      const response = await fetch("/chat/voice", { method: "POST", body: form });
+      if (!response.ok) {
+        throw new Error("HTTP " + response.status);
+      }
+      const data = await response.json();
+      conversationId = data.conversation_id;
+      thinking.remove();
+
+      // Same rendering path as a text turn — this is what "voice/text
+      // conversation continuity" means: a voice turn looks identical to
+      // a typed one in the log afterward, just tagged with a mic icon.
+      const userDiv = appendMessage("user", data.transcribed_text || "(inaudible)");
+      userDiv.classList.add("voice");
+      const assistantDiv = appendMessage("assistant", data.reply);
+      appendToolLog(assistantDiv, data.tool_calls);
+      log.scrollTop = log.scrollHeight;
+
+      if (data.audio_base64) {
+        currentAudio = new Audio("data:audio/wav;base64," + data.audio_base64);
+        currentAudio.play().catch(() => {});
+      }
+    } catch (err) {
+      thinking.remove();
+      appendMessage("error", "Voice request failed: " + err.message);
+    } finally {
+      mic.classList.remove("processing");
+      core.classList.remove("active");
+    }
+  }
+
+  mic.addEventListener("mousedown", startRecording);
+  mic.addEventListener("touchstart", (e) => { e.preventDefault(); startRecording(); });
+  mic.addEventListener("mouseup", finishRecording);
+  mic.addEventListener("mouseleave", finishRecording);
+  mic.addEventListener("touchend", (e) => { e.preventDefault(); finishRecording(); });
 </script>
 </body>
 </html>
