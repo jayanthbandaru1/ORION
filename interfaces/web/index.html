@@ -256,6 +256,41 @@
     content: " \1F3A4";
   }
 
+  .confirm-prompt {
+    border-left: 2px solid var(--tier-sensitive);
+    padding-left: 0.75rem;
+  }
+  .confirm-prompt.destructive { border-left-color: var(--tier-destructive); }
+  .confirm-prompt .confirm-header {
+    font-size: 0.68rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+    color: var(--tier-sensitive);
+  }
+  .confirm-prompt.destructive .confirm-header { color: var(--tier-destructive); }
+  .confirm-action {
+    font-size: 0.88rem;
+    margin-bottom: 0.4rem;
+    padding-left: 0.6rem;
+    border-left: 2px solid currentColor;
+  }
+  .confirm-buttons { display: flex; gap: 0.6rem; margin-top: 0.7rem; }
+  .confirm-buttons button {
+    font-family: inherit;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.4rem 1.1rem;
+    cursor: pointer;
+    background: transparent;
+  }
+  .confirm-approve { border: 1px solid var(--tier-read); color: var(--tier-read); }
+  .confirm-approve:hover:not(:disabled) { background: rgba(61, 220, 151, 0.12); }
+  .confirm-deny { border: 1px solid var(--tier-destructive); color: var(--tier-destructive); }
+  .confirm-deny:hover:not(:disabled) { background: rgba(255, 77, 109, 0.12); }
+  .confirm-buttons button:disabled { opacity: 0.4; cursor: default; }
+
   #wake-status {
     margin-top: 0.4rem;
     font-size: 0.62rem;
@@ -405,6 +440,87 @@
     container.appendChild(wrap);
   }
 
+  // Renders a pending_confirmation as an inline approve/deny prompt using
+  // the same tier colors as the tool-call log — PHASE4.md: amber for
+  // SENSITIVE, red for DESTRUCTIVE, plain-language consequence per action.
+  function renderPendingConfirmation(data) {
+    const hasDestructive = data.pending_actions.some((a) => a.tier === "DESTRUCTIVE");
+    const div = document.createElement("div");
+    div.className = "msg confirm-prompt" + (hasDestructive ? " destructive" : "");
+
+    const header = document.createElement("div");
+    header.className = "confirm-header";
+    header.textContent = hasDestructive ? "Confirmation required — destructive" : "Confirmation required";
+    div.appendChild(header);
+
+    for (const action of data.pending_actions) {
+      const line = document.createElement("div");
+      line.className = "confirm-action tier-" + action.tier;
+      line.textContent = "[" + action.tier + "] " + action.description;
+      div.appendChild(line);
+    }
+
+    const buttons = document.createElement("div");
+    buttons.className = "confirm-buttons";
+    const approveBtn = document.createElement("button");
+    approveBtn.className = "confirm-approve";
+    approveBtn.textContent = "Approve";
+    const denyBtn = document.createElement("button");
+    denyBtn.className = "confirm-deny";
+    denyBtn.textContent = "Deny";
+    buttons.appendChild(approveBtn);
+    buttons.appendChild(denyBtn);
+    div.appendChild(buttons);
+
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+
+    const resolve = async (approved) => {
+      approveBtn.disabled = true;
+      denyBtn.disabled = true;
+      core.classList.add("active");
+      const thinking = appendMessage("assistant", "...");
+      try {
+        const response = await fetch("/chat/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirmation_id: data.confirmation_id, approved }),
+        });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const result = await response.json();
+        thinking.remove();
+        await renderChatResult(result);
+      } catch (err) {
+        thinking.remove();
+        appendMessage("error", "Confirmation failed: " + err.message);
+      } finally {
+        core.classList.remove("active");
+      }
+    };
+
+    approveBtn.addEventListener("click", () => resolve(true));
+    denyBtn.addEventListener("click", () => resolve(false));
+  }
+
+  // Shared by text chat, voice, and the confirm buttons — a response is
+  // either a normal reply or another pending_confirmation (a later round
+  // in the same turn can need its own approval), so every entry point
+  // needs to handle both, not just the first one.
+  async function renderChatResult(data, opts = {}) {
+    conversationId = data.conversation_id;
+    if (data.status === "pending_confirmation") {
+      renderPendingConfirmation(data);
+      return;
+    }
+    const assistantDiv = appendMessage("assistant", data.reply);
+    appendToolLog(assistantDiv, data.tool_calls);
+    log.scrollTop = log.scrollHeight;
+    if (opts.playAudio && data.audio_base64) {
+      currentAudio = new Audio("data:audio/wav;base64," + data.audio_base64);
+      currentAudio.play().catch(() => {});
+    }
+  }
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const message = input.value.trim();
@@ -425,11 +541,8 @@
         throw new Error("HTTP " + response.status);
       }
       const data = await response.json();
-      conversationId = data.conversation_id;
       thinking.remove();
-      const assistantDiv = appendMessage("assistant", data.reply);
-      appendToolLog(assistantDiv, data.tool_calls);
-      log.scrollTop = log.scrollHeight;
+      await renderChatResult(data);
     } catch (err) {
       thinking.remove();
       appendMessage("error", "Failed to get a reply: " + err.message);
@@ -495,22 +608,16 @@
         throw new Error("HTTP " + response.status);
       }
       const data = await response.json();
-      conversationId = data.conversation_id;
       thinking.remove();
 
       // Same rendering path as a text turn — this is what "voice/text
       // conversation continuity" means: a voice turn looks identical to
       // a typed one in the log afterward, just tagged with a mic icon.
+      // If this pauses for confirmation, there's no reply/audio yet —
+      // renderChatResult renders the approve/deny prompt instead.
       const userDiv = appendMessage("user", data.transcribed_text || "(inaudible)");
       userDiv.classList.add("voice");
-      const assistantDiv = appendMessage("assistant", data.reply);
-      appendToolLog(assistantDiv, data.tool_calls);
-      log.scrollTop = log.scrollHeight;
-
-      if (data.audio_base64) {
-        currentAudio = new Audio("data:audio/wav;base64," + data.audio_base64);
-        currentAudio.play().catch(() => {});
-      }
+      await renderChatResult(data, { playAudio: true });
     } catch (err) {
       thinking.remove();
       appendMessage("error", "Voice request failed: " + err.message);

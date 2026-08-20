@@ -21,13 +21,14 @@ import base64
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core.orchestrator import Orchestrator
+from core.orchestrator import OllamaUnavailableError, Orchestrator
 from interfaces.voice import stt, tts
 
 load_dotenv()
@@ -55,26 +56,71 @@ class ChatRequest(BaseModel):
     conversation_id: int | None = None
 
 
+class ConfirmRequest(BaseModel):
+    confirmation_id: str
+    approved: bool
+
+
 class ToolCallInfo(BaseModel):
     name: str
     tier: str
+    denied: bool | None = None
+
+
+class PendingAction(BaseModel):
+    name: str
+    arguments: dict[str, Any]
+    tier: str
+    description: str
 
 
 class ChatResponse(BaseModel):
-    reply: str
+    status: str  # "complete" | "pending_confirmation"
     conversation_id: int
+    reply: str | None = None
     tool_calls: list[ToolCallInfo] | None = None
+    confirmation_id: str | None = None
+    pending_actions: list[PendingAction] | None = None
 
 
 class VoiceChatResponse(ChatResponse):
-    transcribed_text: str
-    audio_base64: str
+    transcribed_text: str | None = None
+    audio_base64: str | None = None
+
+
+def _to_chat_response(result: dict[str, Any]) -> ChatResponse:
+    return ChatResponse(
+        status=result["status"],
+        conversation_id=result["conversation_id"],
+        reply=result.get("reply"),
+        tool_calls=result.get("tool_calls") or None,
+        confirmation_id=result.get("confirmation_id"),
+        pending_actions=result.get("pending_actions"),
+    )
+
+
+async def _run_orchestrator_chat(message: str, conversation_id: int | None) -> dict[str, Any]:
+    try:
+        return await orchestrator.chat(message, conversation_id)
+    except OllamaUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
-    conversation_id, reply, tool_calls = await orchestrator.chat(req.message, req.conversation_id)
-    return ChatResponse(reply=reply, conversation_id=conversation_id, tool_calls=tool_calls or None)
+    result = await _run_orchestrator_chat(req.message, req.conversation_id)
+    return _to_chat_response(result)
+
+
+@app.post("/chat/confirm", response_model=ChatResponse)
+async def chat_confirm(req: ConfirmRequest) -> ChatResponse:
+    try:
+        result = await orchestrator.confirm(req.confirmation_id, req.approved)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OllamaUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return _to_chat_response(result)
 
 
 @app.post("/chat/voice", response_model=VoiceChatResponse)
@@ -85,16 +131,14 @@ async def chat_voice(
     audio_bytes = await audio.read()
     text = stt.transcribe(audio_bytes)
 
-    conversation_id, reply, tool_calls = await orchestrator.chat(text, conversation_id)
-    reply_audio = tts.synthesize(reply)
+    result = await _run_orchestrator_chat(text, conversation_id)
+    base = _to_chat_response(result)
 
-    return VoiceChatResponse(
-        reply=reply,
-        conversation_id=conversation_id,
-        tool_calls=tool_calls or None,
-        transcribed_text=text,
-        audio_base64=base64.b64encode(reply_audio).decode(),
-    )
+    # No audio to synthesize yet if this turn paused for confirmation —
+    # there's no reply text until the human approves or denies it.
+    audio_b64 = base64.b64encode(tts.synthesize(base.reply)).decode() if base.reply else None
+
+    return VoiceChatResponse(**base.model_dump(), transcribed_text=text, audio_base64=audio_b64)
 
 
 @app.get("/health")
