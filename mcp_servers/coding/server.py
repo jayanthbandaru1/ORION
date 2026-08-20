@@ -145,8 +145,18 @@ def search_code(pattern: str, subdirectory: str = ".") -> list[dict]:
 def _shell_split(command: str) -> list[str]:
     import shlex
 
-    # posix=False keeps this sane for Windows-style paths/flags.
-    return shlex.split(command, posix=(sys.platform != "win32"))
+    # posix=True mangles Windows backslash paths (interprets them as escape
+    # sequences — C:\Users\x becomes C:Usersx), so posix=False on Windows.
+    # But posix=False's cost is it doesn't strip quote characters from
+    # quoted tokens either — found via a real test failure: `python -c
+    # "print('hi')"` came back with an empty stdout because the quotes
+    # survived into the token, turning the call into `python -c
+    # '"print(\'hi\')"'`, i.e. an inert string-literal expression instead
+    # of an actual print call. Strip matching outer quotes ourselves.
+    tokens = shlex.split(command, posix=(sys.platform != "win32"))
+    if sys.platform == "win32":
+        tokens = [t[1:-1] if len(t) >= 2 and t[0] == t[-1] and t[0] in "\"'" else t for t in tokens]
+    return tokens
 
 
 @mcp.tool()
