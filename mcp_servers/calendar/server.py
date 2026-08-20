@@ -21,6 +21,7 @@ from googleapiclient.errors import HttpError
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.google_auth import get_credentials  # noqa: E402
+from core.google_errors import humanize_google_error  # noqa: E402
 
 mcp = FastMCP(
     name="orion-calendar",
@@ -103,7 +104,7 @@ def calendar_get_events(
             .execute()
         )
     except HttpError as exc:
-        raise ValueError(f"Google Calendar API error: {exc}") from exc
+        raise ValueError(humanize_google_error(exc)) from exc
 
     return [_format_event(e) for e in result.get("items", [])]
 
@@ -119,7 +120,7 @@ def calendar_search(query: str, max_results: int = 20, calendar_id: str = "prima
             .execute()
         )
     except HttpError as exc:
-        raise ValueError(f"Google Calendar API error: {exc}") from exc
+        raise ValueError(humanize_google_error(exc)) from exc
 
     return [_format_event(e) for e in result.get("items", [])]
 
@@ -144,7 +145,7 @@ def calendar_find_free_time(
             .execute()
         )
     except HttpError as exc:
-        raise ValueError(f"Google Calendar API error: {exc}") from exc
+        raise ValueError(humanize_google_error(exc)) from exc
 
     busy = result["calendars"][calendar_id].get("busy", [])
     busy_ranges = sorted(
@@ -188,7 +189,7 @@ def calendar_create_event(
     try:
         event = _client().events().insert(calendarId=calendar_id, body=body).execute()
     except HttpError as exc:
-        raise ValueError(f"Google Calendar API error: {exc}") from exc
+        raise ValueError(humanize_google_error(exc)) from exc
 
     return _format_event(event)
 
@@ -220,7 +221,7 @@ def calendar_update_event(
 
         updated = _client().events().update(calendarId=calendar_id, eventId=event_id, body=event).execute()
     except HttpError as exc:
-        raise ValueError(f"Google Calendar API error: {exc}") from exc
+        raise ValueError(humanize_google_error(exc)) from exc
 
     return _format_event(updated)
 
@@ -231,7 +232,7 @@ def calendar_delete_event(event_id: str, calendar_id: str = "primary") -> str:
     try:
         _client().events().delete(calendarId=calendar_id, eventId=event_id).execute()
     except HttpError as exc:
-        raise ValueError(f"Google Calendar API error: {exc}") from exc
+        raise ValueError(humanize_google_error(exc)) from exc
 
     return f"Deleted event {event_id}"
 

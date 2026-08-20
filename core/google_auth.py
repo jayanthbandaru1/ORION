@@ -17,9 +17,18 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv, set_key
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+
+
+class GoogleAuthExpiredError(Exception):
+    """The refresh token itself is dead (revoked, expired from inactivity,
+    or the OAuth consent scope changed) — distinct from a normal API error
+    so callers can show 'run google_auth.py again' instead of a raw 401/
+    invalid_grant surfaced as-is (PHASE4.md: 'a stale token should trigger
+    a clear re-auth flow, not a confusing 401')."""
 
 ENV_PATH = Path(__file__).parent.parent / ".env"
 load_dotenv(ENV_PATH)
@@ -79,7 +88,13 @@ def get_credentials() -> Credentials:
         client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
         scopes=SCOPES,
     )
-    creds.refresh(Request())
+    try:
+        creds.refresh(Request())
+    except RefreshError as exc:
+        raise GoogleAuthExpiredError(
+            "Google authentication has expired or been revoked. Re-run "
+            "`python core/google_auth.py` to sign in again (opens a browser)."
+        ) from exc
     return creds
 
 

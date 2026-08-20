@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import ollama
 import yaml
 from fastmcp import Client
 from ollama import AsyncClient
@@ -142,6 +143,17 @@ class Orchestrator:
                 "Can't reach Ollama — is it running? (SETUP.md step 1: `ollama --version`, "
                 "then the model should respond to `ollama run qwen3:8b \"hi\"`)"
             ) from exc
+        except ConnectionError as exc:
+            # ollama-python catches httpx's connection errors itself and
+            # re-raises as a plain builtin ConnectionError with its own
+            # already-clear message — verified empirically (its message
+            # doesn't match either httpx exception type above, so without
+            # this separate branch it falls through uncaught to a raw 500).
+            raise OllamaUnavailableError(str(exc)) from exc
+        except ollama.ResponseError as exc:
+            # E.g. the model name is wrong/not pulled — Ollama is reachable
+            # but rejected the request itself.
+            raise OllamaUnavailableError(f"Ollama rejected the request: {exc}") from exc
         return response
 
     def _persist_assistant(self, conversation_id: int, assistant_message: dict) -> None:

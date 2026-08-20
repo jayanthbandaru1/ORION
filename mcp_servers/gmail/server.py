@@ -18,6 +18,7 @@ from googleapiclient.errors import HttpError
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.google_auth import get_credentials  # noqa: E402
+from core.google_errors import humanize_google_error  # noqa: E402
 
 mcp = FastMCP(
     name="orion-gmail",
@@ -84,7 +85,7 @@ def gmail_search(query: str, max_results: int = 10) -> list[dict]:
             })
         return out
     except HttpError as exc:
-        raise ValueError(f"Gmail API error: {exc}") from exc
+        raise ValueError(humanize_google_error(exc)) from exc
 
 
 @mcp.tool()
@@ -93,7 +94,7 @@ def gmail_get_message(message_id: str) -> dict:
     try:
         msg = _client().users().messages().get(userId="me", id=message_id, format="full").execute()
     except HttpError as exc:
-        raise ValueError(f"Gmail API error: {exc}") from exc
+        raise ValueError(humanize_google_error(exc)) from exc
 
     headers = msg["payload"]["headers"]
     return {
@@ -113,7 +114,7 @@ def gmail_get_thread(thread_id: str) -> list[dict]:
     try:
         thread = _client().users().threads().get(userId="me", id=thread_id, format="full").execute()
     except HttpError as exc:
-        raise ValueError(f"Gmail API error: {exc}") from exc
+        raise ValueError(humanize_google_error(exc)) from exc
 
     out = []
     for msg in thread.get("messages", []):
@@ -145,7 +146,7 @@ def gmail_create_draft(to: str, subject: str, body: str, thread_id: str | None =
     try:
         draft = _client().users().drafts().create(userId="me", body=draft_body).execute()
     except HttpError as exc:
-        raise ValueError(f"Gmail API error: {exc}") from exc
+        raise ValueError(humanize_google_error(exc)) from exc
 
     return {"draft_id": draft["id"], "to": to, "subject": subject}
 
@@ -168,7 +169,7 @@ def gmail_update_draft(draft_id: str, to: str, subject: str, body: str) -> dict:
             .execute()
         )
     except HttpError as exc:
-        raise ValueError(f"Gmail API error: {exc}") from exc
+        raise ValueError(humanize_google_error(exc)) from exc
 
     return {"draft_id": draft["id"], "to": to, "subject": subject}
 
@@ -179,7 +180,7 @@ def gmail_send_draft(draft_id: str) -> str:
     try:
         sent = _client().users().drafts().send(userId="me", body={"id": draft_id}).execute()
     except HttpError as exc:
-        raise ValueError(f"Gmail API error: {exc}") from exc
+        raise ValueError(humanize_google_error(exc)) from exc
 
     return f"Sent message {sent['id']}"
 
