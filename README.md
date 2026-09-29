@@ -518,7 +518,7 @@ Install:
 Clone the repository:
 
 ```bash
-git clone https://github.com/Slasher4t/ORION.git
+git clone https://github.com/jayanthbandaru1/ORION.git
 cd ORION
 ```
 
