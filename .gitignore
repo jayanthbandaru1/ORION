@@ -9,3 +9,8 @@ workspace/
 # NOT match interfaces/web/models/ — that one holds the small (~1MB),
 # freely-redistributable Porcupine base model, which is committed.
 /models/
+
+# v1.2 Stage 12 — Electron desktop shell subproject
+desktop/node_modules/
+desktop/electron.log
+desktop/dist/

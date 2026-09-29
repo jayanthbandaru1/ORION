@@ -64,8 +64,19 @@ underneath the full loop.
 ## 5. Run ORION
 
 ```powershell
-uvicorn api:app --reload
+uvicorn api:app --host 0.0.0.0 --reload --reload-dir core --reload-dir mcp_servers --reload-dir config --reload-dir interfaces
 ```
+
+`--host 0.0.0.0` (rather than the default 127.0.0.1-only) is what makes
+ORION reachable from a phone on the same Wi-Fi/LAN — see the NETWORK tab
+for the exact URL to open there once the server's running. The first
+time you do this, Windows Firewall will prompt to allow Python through
+on private networks — allow it, or the phone won't be able to connect.
+The explicit `--reload-dir` list matters too: the coding tools write into
+`./workspace` and SQLite writes into `./data` during normal operation —
+without this allowlist, `--reload`'s file watcher (which defaults to the
+whole project) treats every tool call as a source change and restarts
+the whole server mid-request.
 
 You should see a log line like:
 ```

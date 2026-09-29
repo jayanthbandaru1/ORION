@@ -1,0 +1,42 @@
+{
+  "name": "orion-desktop",
+  "productName": "ORION v1.2",
+  "version": "1.2.0",
+  "private": true,
+  "description": "ORION standalone desktop client — Electron shell around the existing FastAPI server/web UI. Not a separate AI brain; just another client of the same ORION server, same as a browser tab.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.orion.desktop",
+    "productName": "ORION v1.2",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "get_location.ps1",
+      "package.json",
+      "orion-remote.json",
+      "app-icon.png"
+    ],
+    "asarUnpack": [
+      "get_location.ps1"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "icon.ico",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "ORION-v1.2-portable.exe"
+    }
+  }
+}

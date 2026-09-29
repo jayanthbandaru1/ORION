@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ORION</title>
+<link rel="manifest" href="mobile-manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#04080b">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<style>
+  /* Same design tokens as interfaces/web/index.html on purpose — the
+     v1.2 spec asks for a genuinely different mobile layout, not a
+     different visual identity. Only the component CSS below (bottom
+     nav, single-column screens, FAB mic) is new. */
+  :root {
+    --bg: #04080b;
+    --panel: rgba(8, 20, 26, .72);
+    --panel-solid: #08141a;
+    --border: rgba(79, 214, 232, .14);
+    --border-strong: rgba(79, 214, 232, .3);
+    --cyan: #4fd6e8;
+    --cyan-bright: #eafcff;
+    --cyan-dim: rgba(79, 214, 232, .5);
+    --text: #cfe9ef;
+    --text-mid: #a9c8ce;
+    --text-dim: #84a6ae;
+    --text-dimmer: #5f8792;
+    --text-faint: #4d7480;
+    --text-faintest: #3f6570;
+    --amber: #f0b45f;
+    --green: #63f0a8;
+    --red: #e06a6a;
+    --tier-read: #63f0a8;
+    --tier-safe: #4fd6e8;
+    --tier-reversible: #f0b45f;
+    --tier-sensitive: #f0b45f;
+    --tier-destructive: #e06a6a;
+    --font-ui: 'Chakra Petch', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --nav-h: 64px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { background: var(--bg); color: var(--text); font-family: var(--font-ui); margin: 0; height: 100%; }
+  body {
+    display: flex; flex-direction: column; overflow: hidden;
+    background: radial-gradient(900px 600px at 50% 0%, #071720 0%, var(--bg) 62%);
+  }
+  button { font-family: inherit; }
+  .mono { font-family: var(--font-mono); }
+  @keyframes orionSpin { to { transform: rotate(360deg); } }
+  @keyframes orionSpinRev { to { transform: rotate(-360deg); } }
+  @keyframes orionPulse { 0%, 100% { opacity: .25; transform: scale(1); } 50% { opacity: .7; transform: scale(1.06); } }
+  @keyframes orionBar { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+  @keyframes orionBlink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+  @keyframes pulse-fast { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+  /* ---------- App shell: top strip + one active screen + bottom nav ---------- */
+  #mtop {
+    flex: none; display: flex; flex-direction: column; border-bottom: 1px solid var(--border);
+    background: rgba(7, 18, 24, .82);
+  }
+  #mtop-row {
+    display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;
+  }
+  .brand-mark { display: flex; align-items: center; gap: 8px; }
+  .brand-ring { width: 17px; height: 17px; border: 1.5px solid var(--cyan); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; }
+  .brand-ring .dot { width: 5px; height: 5px; background: var(--cyan); border-radius: 50%; }
+  .brand-name { font-size: 16px; font-weight: 700; letter-spacing: .3em; color: var(--cyan-bright); }
+  .status-chip { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--border-strong); border-radius: 3px; background: rgba(79, 214, 232, .06); }
+  .status-chip .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-faintest); flex: none; }
+  .status-chip.online .dot { background: var(--green); animation: orionBlink 2.4s ease-in-out infinite; }
+  .status-chip.online span.label { color: var(--green) !important; }
+  .status-chip.offline .dot { background: var(--red); }
+  .status-chip.offline span.label { color: var(--red) !important; }
+  .status-chip .label { font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em; color: var(--text-dim); }
+  #weather-chip-mini { font-family: var(--font-mono); font-size: 10px; letter-spacing: .08em; color: var(--text-faintest); }
+
+  #core-status-strip {
+    flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 14px;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--text-faint);
+    border-top: 1px solid var(--border);
+  }
+  #core-status-strip .dot { width: 5px; height: 5px; background: var(--cyan); border-radius: 50%; animation: orionBlink 1.2s ease-in-out infinite; flex: none; }
+
+  main { flex: 1; min-height: 0; position: relative; }
+  .screen { position: absolute; inset: 0; overflow-y: auto; padding: 16px 14px calc(16px + var(--nav-h)); display: none; }
+  .screen.active { display: block; }
+
+  #bottom-nav {
+    flex: none; display: flex; height: var(--nav-h); border-top: 1px solid var(--border);
+    background: rgba(5, 13, 18, .92); padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .nav-btn {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    background: none; border: none; color: var(--text-dimmer); cursor: pointer;
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em;
+  }
+  .nav-btn .glyph { font-size: 18px; line-height: 1; }
+  .nav-btn.active { color: var(--cyan-bright); }
+  .nav-btn.active .glyph { filter: drop-shadow(0 0 6px rgba(79, 214, 232, .6)); }
+
+  /* ---------- Card primitives (same visual language as desktop) ---------- */
+  .card { border: 1px solid var(--border); background: var(--panel); border-radius: 4px; margin-bottom: 12px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 10px; letter-spacing: .2em; color: #7fd3e2; }
+  .card-body { padding: 12px; display: flex; flex-direction: column; gap: 11px; }
+  .sensor-note { font-size: 12px; line-height: 1.6; color: var(--text-dim); }
+  .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .mini-cell { border: 1px solid var(--border); padding: 8px 6px; text-align: center; }
+  .mini-cell .k { font-family: var(--font-mono); font-size: 9px; color: var(--text-dimmer); letter-spacing: .1em; }
+  .mini-cell .v { font-family: var(--font-mono); font-size: 14px; color: var(--cyan-bright); margin-top: 3px; }
+  .no-gpu { font-family: var(--font-mono); font-size: 11px; color: var(--text-dimmer); padding: 8px 0; }
+  .forecast-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 12px; }
+  .forecast-row:last-child { border-bottom: none; }
+  .forecast-row .f-date { color: var(--text-dim); width: 82px; flex: none; }
+  .forecast-row .f-cond { flex: 1; color: var(--text-mid); }
+  .forecast-row .f-temps { color: var(--cyan-bright); white-space: nowrap; }
+  .forecast-row .f-precip { color: var(--text-faintest); width: 42px; text-align: right; flex: none; }
+  .two-col-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .two-col-stats .k { font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em; color: var(--text-dimmer); }
+  .two-col-stats .v { font-family: var(--font-mono); font-size: 14px; color: var(--cyan-bright); margin-top: 3px; }
+  .stat-row .line { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+  .notif-row { border: 1px solid var(--border); border-left: 2px solid var(--cyan); padding: 10px 12px; margin-bottom: 8px; }
+  .notif-row:last-child { margin-bottom: 0; }
+  .notif-row.task { border-left-color: var(--amber); }
+  .notif-row .n-head { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--cyan-bright); margin-bottom: 4px; }
+  .notif-row .n-body { font-size: 12px; color: var(--text-dim); }
+  .tier-READ { color: var(--tier-read); } .tier-SAFE { color: var(--tier-safe); } .tier-REVERSIBLE { color: var(--tier-reversible); }
+  .tier-SENSITIVE { color: var(--tier-sensitive); } .tier-DESTRUCTIVE { color: var(--tier-destructive); }
+  .icon-btn { border: 1px solid var(--border); border-radius: 3px; background: transparent; color: var(--text-dim); padding: 7px 12px; font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; cursor: pointer; }
+  .icon-btn:hover { border-color: var(--cyan); color: var(--cyan-bright); }
+
+  /* ---------- HOME: voice-first landing screen ---------- */
+  #screen-home { display: none; flex-direction: column; align-items: center; text-align: center; gap: 22px; padding-top: 28px; }
+  #screen-home.active { display: flex; }
+  #orb-wrap { --emotion-color: var(--cyan); width: 190px; height: 190px; position: relative; display: flex; align-items: center; justify-content: center; flex: none; }
+  .orb-ring { position: absolute; border-radius: 50%; box-sizing: border-box; }
+  .orb-ring-outer { width: 190px; height: 190px; border: 1px solid rgba(79, 214, 232, .12); }
+  .orb-ring-dash { width: 190px; height: 190px; border: 1px dashed color-mix(in srgb, var(--emotion-color) 55%, transparent); border-bottom-color: transparent; border-left-color: transparent; animation: orionSpin 22s linear infinite; }
+  .orb-ring-solid { width: 148px; height: 148px; border: 1.5px solid color-mix(in srgb, var(--emotion-color) 70%, transparent); border-top-color: transparent; border-right-color: transparent; animation: orionSpinRev 14s linear infinite; }
+  .orb-ring-pulse { width: 116px; height: 116px; border: 1px solid rgba(79, 214, 232, .16); background: radial-gradient(circle, color-mix(in srgb, var(--emotion-color) 18%, transparent) 0%, transparent 70%); animation: orionPulse 3.6s ease-in-out infinite; }
+  .orb-ring-inner { width: 84px; height: 84px; border: 1px solid color-mix(in srgb, var(--emotion-color) 60%, transparent); box-shadow: 0 0 34px color-mix(in srgb, var(--emotion-color) 30%, transparent) inset; }
+  #orb-core { position: relative; width: 50px; height: 50px; border-radius: 50%; background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--emotion-color) 40%, transparent), rgba(8, 26, 34, .9)); border: 1px solid color-mix(in srgb, var(--emotion-color) 80%, transparent); display: flex; align-items: center; justify-content: center; gap: 2px; }
+  .orb-bar { width: 2.5px; height: 11px; background: var(--emotion-color); border-radius: 1px; }
+  #orb-wrap[data-state="idle"] .orb-bar { animation: orionBar 2.6s ease-in-out infinite; }
+  #orb-wrap[data-state="idle"] .orb-bar:nth-child(2) { animation-delay: .15s; } #orb-wrap[data-state="idle"] .orb-bar:nth-child(3) { animation-delay: .3s; }
+  #orb-wrap[data-state="idle"] .orb-bar:nth-child(4) { animation-delay: .45s; } #orb-wrap[data-state="idle"] .orb-bar:nth-child(5) { animation-delay: .6s; }
+  #orb-wrap[data-state="thinking"] .orb-bar { animation: orionBar .9s ease-in-out infinite; }
+  #orb-wrap[data-state="thinking"] .orb-ring-dash { animation-duration: 6s; } #orb-wrap[data-state="thinking"] .orb-ring-solid { animation-duration: 4s; }
+  #orb-wrap[data-state="tool_use"] .orb-bar { animation: orionBar .6s ease-in-out infinite; }
+  #orb-wrap[data-state="tool_use"] .orb-ring-dash { animation-duration: 3s; } #orb-wrap[data-state="tool_use"] .orb-ring-solid { animation-duration: 2s; }
+  #orb-wrap[data-state="confirmation"] #orb-core { animation: orionPulse 1.3s ease-in-out infinite; }
+  #orb-wrap[data-state="confirmation"] .orb-ring-dash, #orb-wrap[data-state="confirmation"] .orb-ring-solid { animation-play-state: paused; }
+  #orb-wrap[data-state="error"] .orb-ring-dash, #orb-wrap[data-state="error"] .orb-ring-solid { animation-play-state: paused; }
+  #orb-wrap[data-state="error"] .orb-bar { animation: pulse-fast .5s ease-in-out infinite; }
+  #orb-wrap[data-state="connecting"] .orb-bar { opacity: .35; animation: orionBar 2s ease-in-out infinite; }
+  #orb-wrap[data-state="offline"] .orb-ring-dash, #orb-wrap[data-state="offline"] .orb-ring-solid { animation-play-state: paused; opacity: .08; }
+  #orb-wrap[data-state="offline"] #orb-core { opacity: .25; } #orb-wrap[data-state="offline"] .orb-bar { animation: none; }
+
+  .orb-wordmark { font-size: 26px; font-weight: 600; letter-spacing: .32em; color: var(--cyan-bright); text-indent: .32em; }
+  #orion-status-chip { display: flex; align-items: center; gap: 8px; padding: 5px 14px; border: 1px solid var(--border-strong); border-radius: 2px; background: rgba(79, 214, 232, .06); }
+  #orion-status-chip .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-faintest); }
+  #orion-status-chip span.label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .16em; color: var(--text-dim); }
+  #orion-status-chip[data-wake="armed"] .dot { background: var(--cyan); animation: orionBlink 1.6s ease-in-out infinite; }
+  #orion-status-chip[data-wake="armed"] span.label { color: #9fe4f0; }
+  #orion-status-chip[data-wake="triggered"] .dot { background: var(--amber); animation: pulse-fast .5s ease-in-out infinite; }
+  #orion-status-chip[data-wake="triggered"] span.label { color: var(--amber); }
+  #orion-status-chip[data-wake="error"] .dot { background: var(--red); }
+  #orion-status-chip[data-wake="error"] span.label { color: var(--red); }
+
+  /* Primary touch target: press-and-hold to talk. Deliberately the
+     single biggest interactive element on the whole page — voice is
+     the front door on mobile, per the spec's "use voice more naturally
+     and frequently" ask, not a small icon buried in a row like desktop's. */
+  #mic-home {
+    width: 92px; height: 92px; border-radius: 50%; border: 1px solid var(--border-strong);
+    background: rgba(10, 25, 33, .85); color: #8fd0dd; font-size: 30px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  #mic-home.mic-active { border-color: var(--cyan); background: rgba(79, 214, 232, .14); color: var(--cyan-bright); box-shadow: 0 0 26px rgba(79, 214, 232, .22); }
+  #mic-home.recording { border-color: var(--red); background: rgba(224, 106, 106, .16); color: var(--red); box-shadow: 0 0 20px rgba(224, 106, 106, .5); animation: pulse-fast .7s ease-in-out infinite; }
+  #mic-home.processing { border-color: var(--amber); color: var(--amber); }
+  .mic-caption { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--text-faint); }
+
+  #home-last-reply { width: 100%; max-width: 420px; text-align: left; }
+  #home-last-reply .content { font-size: 13px; line-height: 1.5; color: #d8f1f6; }
+  #home-open-chat { width: 100%; max-width: 420px; }
+
+  /* ---------- CHAT screen ---------- */
+  #screen-chat { display: none; flex-direction: column; height: 100%; padding: 0 !important; }
+  #screen-chat.active { display: flex; }
+  #chat-log-wrap { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 14px 10px; }
+  .msg { margin-bottom: 14px; }
+  .msg .role { font-family: var(--font-mono); font-size: 9px; letter-spacing: .12em; color: var(--text-faint); display: block; margin-bottom: 5px; }
+  .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
+  .msg.user .content { border: 1px solid rgba(255,255,255,.09); background: rgba(255,255,255,.035); padding: 10px 12px; font-size: 14px; line-height: 1.5; color: #c3d6da; max-width: 88%; display: inline-block; }
+  .msg.assistant .content { border: 1px solid var(--border-strong); border-left: 2px solid var(--cyan); background: rgba(79,214,232,.05); padding: 10px 12px; font-size: 14px; line-height: 1.5; color: #d8f1f6; display: block; }
+  .msg.error .content { border: 1px solid var(--red); border-left: 2px solid var(--red); background: rgba(224,106,106,.06); padding: 10px 12px; color: #f3caca; }
+  .content p { margin: 0 0 .6em; } .content p:last-child { margin-bottom: 0; }
+  .content strong { color: var(--cyan-bright); font-weight: 600; } .content em { font-style: italic; }
+  .content ul, .content ol { margin: 0 0 .6em; padding-left: 1.2em; } .content li { margin-bottom: .2em; }
+  .content code { background: rgba(79,214,232,.1); border: 1px solid var(--border); padding: .05em .35em; border-radius: 2px; font-family: var(--font-mono); font-size: .85em; }
+  .content pre { background: rgba(79,214,232,.05); border: 1px solid var(--border); padding: .6em .7em; overflow-x: auto; margin: 0 0 .6em; font-family: var(--font-mono); }
+  .content pre code { background: none; border: none; padding: 0; }
+  .content a { color: var(--cyan); }
+  .msg.voice .role::after { content: " \1F3A4"; }
+  .tool-log { margin-top: 8px; font-family: var(--font-mono); font-size: 9px; }
+  .tool-service { letter-spacing: .12em; color: var(--text-faint); margin-top: 8px; }
+  .tool-service:first-child { margin-top: 0; } .tool-service::before { content: "\21B3 "; opacity: .6; }
+  .tool-log .tool-line { display: flex; align-items: center; gap: 6px; color: var(--text-dim); margin-top: 3px; padding-left: 14px; }
+  .tool-line .dot { width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 6px currentColor; flex: none; }
+  .confirm-prompt .content { border-color: var(--amber); border-left-color: var(--amber); background: rgba(240,180,95,.06); }
+  .confirm-prompt.destructive .content { border-color: var(--red); border-left-color: var(--red); background: rgba(224,106,106,.06); }
+  .confirm-header { font-family: var(--font-mono); font-size: 9px; letter-spacing: .15em; text-transform: uppercase; margin-bottom: 8px; color: var(--amber); }
+  .confirm-prompt.destructive .confirm-header { color: var(--red); }
+  .confirm-action { font-size: 13px; margin-bottom: 6px; padding-left: 8px; border-left: 2px solid currentColor; }
+  .confirm-buttons { display: flex; gap: 10px; margin-top: 10px; }
+  .confirm-buttons button { font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; padding: 7px 18px; cursor: pointer; background: transparent; }
+  .confirm-approve { border: 1px solid var(--green); color: var(--green); }
+  .confirm-deny { border: 1px solid var(--red); color: var(--red); }
+  .confirm-buttons button:disabled { opacity: .4; cursor: default; }
+  #chat-typing { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; color: var(--text-faint); padding: 0 14px 8px; flex: none; }
+  #chat-typing .dot { width: 5px; height: 5px; background: var(--cyan); animation: orionBlink 1.2s ease-in-out infinite; }
+  #chat-form { flex: none; padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0)); border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; background: rgba(6,15,20,.85); }
+  #chat-input { flex: 1; min-width: 0; border: 1px solid var(--border-strong); background: rgba(4,12,16,.9); color: var(--text); padding: 12px; font-family: var(--font-mono); font-size: 14px; outline: none; border-radius: 3px; }
+  #chat-input::placeholder { color: var(--text-faint); }
+  .chat-round-btn { width: 44px; height: 44px; flex: none; border-radius: 50%; border: 1px solid var(--border-strong); background: rgba(10,25,33,.85); color: #8fd0dd; font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .chat-round-btn.mic-active { border-color: var(--cyan); background: rgba(79,214,232,.14); color: var(--cyan-bright); }
+  .chat-round-btn.recording { border-color: var(--red); background: rgba(224,106,106,.16); color: var(--red); animation: pulse-fast .7s ease-in-out infinite; }
+  #chat-send { border-color: var(--cyan); background: rgba(79,214,232,.14); color: var(--cyan-bright); }
+
+  /* ---------- MAP screen ---------- */
+  #location-map { border: 1px solid var(--border); filter: saturate(0.6) brightness(0.85) hue-rotate(-8deg); height: 240px; width: 100%; }
+  .location-marker-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px 3px rgba(79,214,232,.7); border: 2px solid var(--cyan-bright); }
+  .location-marker-dest { width: 12px; height: 12px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 10px 3px rgba(240,180,95,.7); border: 2px solid #fff; }
+  .field-row { display: flex; gap: 8px; align-items: center; }
+  .text-field { flex: 1; min-width: 0; border: 1px solid var(--border-strong); background: rgba(4,12,16,.9); color: var(--text); padding: 10px 11px; font-family: var(--font-mono); font-size: 13px; border-radius: 3px; }
+  select.text-field { -webkit-appearance: none; appearance: none; }
+  .check-row { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+
+  /* ---------- WEATHER screen ---------- */
+  #weather-temp-row { display: flex; align-items: baseline; gap: 14px; }
+  #weather-temp { font-family: var(--font-mono); font-size: 44px; color: var(--cyan-bright); }
+  #weather-conditions { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); }
+
+  /* ---------- MORE screen ---------- */
+  .settings-link { display: block; text-align: center; padding: 12px; font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; color: var(--text-faint); text-decoration: none; border: 1px dashed var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div id="mtop">
+  <div id="mtop-row">
+    <div class="brand-mark">
+      <div class="brand-ring"><div class="dot"></div></div>
+      <span class="brand-name">ORION</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span id="weather-chip-mini">—</span>
+      <div id="online-status" class="status-chip"><span class="dot"></span><span class="label" id="online-status-text">CONNECTING</span></div>
+    </div>
+  </div>
+  <div id="core-status-strip"><span class="dot"></span><span id="typing-label">AWAITING DIRECTIVE</span></div>
+</div>
+
+<main>
+
+  <section id="screen-home" class="screen active">
+    <div id="orb-wrap" data-state="idle">
+      <div class="orb-ring orb-ring-outer"></div>
+      <div class="orb-ring orb-ring-dash"></div>
+      <div class="orb-ring orb-ring-solid"></div>
+      <div class="orb-ring orb-ring-pulse"></div>
+      <div class="orb-ring orb-ring-inner"></div>
+      <div id="orb-core"><div class="orb-bar"></div><div class="orb-bar"></div><div class="orb-bar"></div><div class="orb-bar"></div><div class="orb-bar"></div></div>
+    </div>
+    <div class="orb-wordmark">ORION</div>
+    <div id="orion-status-chip"><span class="dot"></span><span class="label" id="wake-status-text">Wake word: off</span></div>
+
+    <button id="mic-home" class="mic-active" type="button" title="Hold to talk">&#127908;</button>
+    <div class="mic-caption">HOLD TO TALK</div>
+
+    <div class="card" id="home-last-reply" style="display:none">
+      <div class="card-head"><span>LAST REPLY</span></div>
+      <div class="card-body"><div class="content" id="home-last-reply-text"></div></div>
+    </div>
+    <button id="home-open-chat" class="icon-btn" type="button" style="padding:12px">OPEN FULL CONVERSATION &#8250;</button>
+  </section>
+
+  <section id="screen-chat" class="screen">
+    <div id="chat-log-wrap"><div id="log"></div></div>
+    <div id="chat-typing"><span class="dot"></span><span id="chat-typing-label">AWAITING DIRECTIVE</span></div>
+    <form id="chat-form">
+      <button id="chat-attach-btn" class="chat-round-btn" type="button" title="Attach a photo for ORION to look at">&#128247;</button>
+      <input id="chat-file-input" type="file" accept="image/*" capture="environment" style="display:none">
+      <input id="chat-input" type="text" autocomplete="off" placeholder="Message ORION…" />
+      <button id="chat-mic" class="chat-round-btn mic-active" type="button" title="Hold to talk">&#9679;</button>
+      <button id="chat-send" class="chat-round-btn" type="submit">&#9656;</button>
+    </form>
+  </section>
+
+  <section id="screen-map" class="screen">
+    <div class="card">
+      <div class="card-head"><span>MAP</span><button id="location-geo-btn" class="icon-btn" type="button">USE MY LOCATION</button></div>
+      <div class="card-body" style="padding:0"><div id="location-map"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span>DESTINATION</span><span class="sub mono" id="location-status" style="font-size:10px;color:var(--text-faintest)">—</span></div>
+      <div class="card-body">
+        <div class="field-row">
+          <input id="location-dest-input" class="text-field" type="text" autocomplete="off" placeholder="e.g. the nearest airport">
+          <button id="location-mic-btn" class="chat-round-btn" type="button" title="Hold to speak a destination">&#127908;</button>
+        </div>
+        <div class="field-row">
+          <select id="location-mode-select" class="text-field">
+            <option value="driving">DRIVING</option>
+            <option value="walking">WALKING</option>
+            <option value="cycling">CYCLING</option>
+          </select>
+          <button id="location-go-btn" class="icon-btn" type="button" style="padding:10px 16px">GO</button>
+        </div>
+        <label class="check-row"><input id="location-alternatives-check" type="checkbox">COMPARE ALTERNATE ROUTES</label>
+        <div class="two-col-stats">
+          <div><div class="k">DISTANCE</div><div class="v" id="location-distance">—</div></div>
+          <div><div class="k">ETA</div><div class="v" id="location-eta">—</div></div>
+        </div>
+        <div class="stat-row"><div class="line"><span>TRAFFIC</span><span id="location-traffic" style="color:var(--text-faintest)">—</span></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span>ROUTE OPTIONS</span><span class="sub mono" id="location-route-count" style="font-size:10px">—</span></div>
+      <div class="card-body" id="location-route-list"><div class="no-gpu">Get directions to see route options here.</div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span>TURN-BY-TURN</span><span class="sub mono" id="location-steps-count" style="font-size:10px">—</span></div>
+      <div class="card-body" id="location-steps-list"><div class="no-gpu">No route yet.</div></div>
+    </div>
+  </section>
+
+  <section id="screen-weather" class="screen">
+    <div class="card">
+      <div class="card-head"><span>CURRENT CONDITIONS</span><button id="weather-geo-btn" class="icon-btn" type="button">USE MY LOCATION</button></div>
+      <div class="card-body">
+        <div class="sensor-note" id="weather-status">Grant location access to see real conditions here.</div>
+        <div id="weather-temp-row"><span id="weather-temp">—°</span><span id="weather-conditions">—</span></div>
+        <div class="mini-grid">
+          <div class="mini-cell"><div class="k">FEELS LIKE</div><div class="v" id="weather-feels-like">—</div></div>
+          <div class="mini-cell"><div class="k">HUMIDITY</div><div class="v" id="weather-humidity">—</div></div>
+          <div class="mini-cell"><div class="k">WIND</div><div class="v" id="weather-wind">—</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span>5-DAY FORECAST</span><span class="sub mono" id="weather-forecast-sub" style="font-size:10px">—</span></div>
+      <div class="card-body" id="weather-forecast-list"><div class="no-gpu">No forecast yet — use your location above.</div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span>SOURCE</span><span class="sub mono" style="font-size:10px">Open-Meteo</span></div>
+      <div class="card-body"><div class="sensor-note">Free, keyless, global weather data. Location comes from this device's own browser Geolocation.</div></div>
+    </div>
+  </section>
+
+  <section id="screen-more" class="screen">
+    <div class="card">
+      <div class="card-head"><span>PROACTIVE MODE</span></div>
+      <div class="card-body">
+        <div class="sensor-note">ORION checks upcoming calendar events and due tasks every 2 minutes on its own. Turn it off any time.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="proactive-toggle-btn" class="icon-btn" type="button">—</button>
+          <button id="notif-permission-btn" class="icon-btn" type="button">ENABLE OS ALERTS</button>
+          <button id="proactive-check-btn" class="icon-btn" type="button">CHECK NOW</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span>NOTIFICATION FEED</span><span class="sub mono" id="notif-count" style="font-size:10px">—</span></div>
+      <div class="card-body" id="notif-list"><div class="no-gpu">Nothing surfaced yet.</div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><span>THIS DEVICE</span><span class="sub mono" id="ws-status-sub" style="font-size:10px">—</span></div>
+      <div class="card-body"><div class="sensor-note">This phone reports its own battery, connection type, and (if granted) location to ORION's device registry — visible from the desktop app's NETWORK tab. Never uses the PC's own hardware stats.</div></div>
+    </div>
+    <a href="index.html" id="switch-desktop-link" class="settings-link">SWITCH TO DESKTOP LAYOUT</a>
+  </section>
+
+</main>
+
+<nav id="bottom-nav">
+  <button class="nav-btn active" data-screen="home"><span class="glyph">&#8981;</span>HOME</button>
+  <button class="nav-btn" data-screen="chat"><span class="glyph">&#128172;</span>CHAT</button>
+  <button class="nav-btn" data-screen="map"><span class="glyph">&#128205;</span>MAP</button>
+  <button class="nav-btn" data-screen="weather"><span class="glyph">&#9729;</span>WX</button>
+  <button class="nav-btn" data-screen="more"><span class="glyph">&#9776;</span>MORE</button>
+</nav>
+
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/porcupine-web.min.js"></script>
+<script src="vendor/web-voice-processor.min.js"></script>
+
+<script>
+  // v1.2 Stage 13 — a genuinely separate mobile-first template: bottom
+  // tab navigation (not a top tab bar), one focused single-column screen
+  // at a time, a voice-first Home screen whose single biggest element is
+  // the mic button, not the desktop's 3-column grid squeezed down. Every
+  // fetch call below hits the exact same backend endpoints as
+  // index.html — this is one more client of the same server, sharing
+  // the same conversation memory, same permission gates, same palette.
+
+  let conversationId = null;
+  const log = document.getElementById("log");
+
+  // --- Bottom nav / screens ---
+  const SCREEN_NAMES = ["home", "chat", "map", "weather", "more"];
+  const screens = {}; const navButtons = {};
+  for (const name of SCREEN_NAMES) {
+    screens[name] = document.getElementById("screen-" + name);
+    navButtons[name] = document.querySelector('.nav-btn[data-screen="' + name + '"]');
+  }
+  const SCREEN_ON_ENTER = {
+    map: () => initLocationMap(),
+    weather: () => pollWeatherView(),
+    more: () => pollProactiveView(),
+  };
+  let activeScreen = "home";
+  function setScreen(name) {
+    activeScreen = name;
+    for (const n of SCREEN_NAMES) {
+      navButtons[n].classList.toggle("active", n === name);
+      screens[n].classList.toggle("active", n === name);
+    }
+    if (SCREEN_ON_ENTER[name]) SCREEN_ON_ENTER[name]();
+    if (name === "chat") document.getElementById("chat-log-wrap").scrollTop = document.getElementById("chat-log-wrap").scrollHeight;
+  }
+  for (const name of SCREEN_NAMES) navButtons[name].addEventListener("click", () => setScreen(name));
+  document.getElementById("home-open-chat").addEventListener("click", () => setScreen("chat"));
+  document.getElementById("switch-desktop-link").addEventListener("click", () => localStorage.setItem("orion-prefer-desktop", "1"));
+
+  // --- ORION orb + core state (identical semantics to index.html) ---
+  const orbWrap = document.getElementById("orb-wrap");
+  const orbBars = Array.from(document.querySelectorAll("#orb-core .orb-bar"));
+  const BAR_WEIGHTS = [0.55, 0.8, 1.0, 0.8, 0.55];
+  const EMOTION_COLORS = { neutral: "#4fd6e8", confident: "#63f0a8", concerned: "#f0b45f", serious: "#e06a6a" };
+  const micButtons = [document.getElementById("mic-home"), document.getElementById("chat-mic")];
+
+  function setOrionState(state, emotion) {
+    orbWrap.dataset.state = state;
+    orbWrap.style.setProperty("--emotion-color", EMOTION_COLORS[emotion] || EMOTION_COLORS.neutral);
+    micButtons.forEach((b) => b.classList.toggle("recording", state === "listening"));
+    if (state !== "listening" && state !== "speaking") orbBars.forEach((bar) => { bar.style.height = ""; });
+    const labels = {
+      idle: "AWAITING DIRECTIVE", listening: "LISTENING…", thinking: "ORION IS COMPOSING…",
+      speaking: "ORION IS SPEAKING…", tool_use: "EXECUTING TOOL…", confirmation: "AWAITING YOUR CONFIRMATION",
+      error: "SOMETHING WENT WRONG", connecting: "RECONNECTING…", offline: "SERVER UNREACHABLE",
+    };
+    const label = labels[state] || labels.idle;
+    document.getElementById("typing-label").textContent = label;
+    document.getElementById("chat-typing-label").textContent = label;
+  }
+
+  let targetAmplitude = 0, smoothAmplitude = 0;
+  function amplitudeTick() {
+    smoothAmplitude += (targetAmplitude - smoothAmplitude) * 0.25;
+    if (orbWrap.dataset.state === "listening" || orbWrap.dataset.state === "speaking") {
+      orbBars.forEach((bar, i) => { bar.style.height = (5 + smoothAmplitude * 22 * BAR_WEIGHTS[i]) + "px"; });
+    }
+    requestAnimationFrame(amplitudeTick);
+  }
+  amplitudeTick();
+
+  function startAmplitudeLoop(analyser) {
+    const buf = new Float32Array(analyser.fftSize);
+    let rafId;
+    const tick = () => {
+      analyser.getFloatTimeDomainData(buf);
+      let sumSquares = 0;
+      for (let i = 0; i < buf.length; i++) sumSquares += buf[i] * buf[i];
+      targetAmplitude = Math.min(1, Math.sqrt(sumSquares / buf.length) * 6);
+      rafId = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => { cancelAnimationFrame(rafId); targetAmplitude = 0; };
+  }
+
+  // --- Markdown + message rendering (verbatim behavior from index.html) ---
+  function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function renderMarkdown(text) {
+    let html = escapeHtml(text);
+    html = html.replace(/```([\s\S]*?)```/g, (_, code) => "<pre><code>" + code.trim() + "</code></pre>");
+    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+    html = html.replace(/^### (.*)$/gm, "<h3>$1</h3>");
+    html = html.replace(/^## (.*)$/gm, "<h2>$1</h2>");
+    html = html.replace(/^# (.*)$/gm, "<h1>$1</h1>");
+    html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/(?<!\w)\*([^*\n]+)\*(?!\w)/g, "<em>$1</em>");
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    html = html.replace(/(^|\n)((?:[ \t]*[-*] .*(?:\n|$))+)/g, (_, prefix, block) => {
+      const items = block.trim().split("\n").map((l) => "<li>" + l.replace(/^[ \t]*[-*]\s+/, "") + "</li>").join("");
+      return prefix + "<ul>" + items + "</ul>";
+    });
+    html = html.replace(/(^|\n)((?:[ \t]*\d+\. .*(?:\n|$))+)/g, (_, prefix, block) => {
+      const items = block.trim().split("\n").map((l) => "<li>" + l.replace(/^[ \t]*\d+\.\s+/, "") + "</li>").join("");
+      return prefix + "<ol>" + items + "</ol>";
+    });
+    html = html.split(/\n{2,}/).map((block) => {
+      const t = block.trim();
+      if (!t) return "";
+      if (/^<(h[1-3]|ul|ol|pre)/.test(t)) return t;
+      return "<p>" + t.replace(/\n/g, "<br>") + "</p>";
+    }).join("");
+    return html;
+  }
+
+  function appendMessage(role, text) {
+    const div = document.createElement("div");
+    div.className = "msg " + role;
+    const roleLabel = document.createElement("span");
+    roleLabel.className = "role";
+    roleLabel.textContent = role.toUpperCase() + " · " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const content = document.createElement("span");
+    content.className = "content";
+    content.innerHTML = renderMarkdown(text);
+    div.appendChild(roleLabel);
+    div.appendChild(content);
+    log.appendChild(div);
+    document.getElementById("chat-log-wrap").scrollTop = log.scrollHeight;
+    if (role === "assistant") {
+      const card = document.getElementById("home-last-reply");
+      card.style.display = "flex";
+      document.getElementById("home-last-reply-text").innerHTML = content.innerHTML;
+    }
+    return div;
+  }
+
+  function serviceForTool(name) {
+    if (name.startsWith("calendar_")) return "CALENDAR";
+    if (name.startsWith("icloud_calendar_")) return "ICLOUD CALENDAR";
+    if (name.startsWith("gmail_")) return "GMAIL";
+    if (name.startsWith("task_")) return "TASKS";
+    if (name.startsWith("web_")) return "WEB";
+    if (name.startsWith("weather_")) return "WEATHER";
+    if (name.startsWith("location_")) return "LOCATION";
+    if (name === "list_files" || name === "read_file" || name.startsWith("list_directory") || name.startsWith("search_files") || name.startsWith("find_file")) return "FILESYSTEM";
+    return "CODING";
+  }
+
+  function appendToolLog(container, toolCalls) {
+    if (!toolCalls || toolCalls.length === 0) return;
+    const groups = new Map();
+    for (const call of toolCalls) {
+      const service = serviceForTool(call.name);
+      if (!groups.has(service)) groups.set(service, []);
+      groups.get(service).push(call);
+    }
+    const wrap = document.createElement("div");
+    wrap.className = "tool-log";
+    for (const [service, calls] of groups) {
+      const serviceLine = document.createElement("div");
+      serviceLine.className = "tool-service";
+      serviceLine.textContent = service;
+      wrap.appendChild(serviceLine);
+      for (const call of calls) {
+        const line = document.createElement("div");
+        line.className = "tool-line";
+        const dot = document.createElement("span");
+        dot.className = "dot tier-" + call.tier;
+        const label = document.createElement("span");
+        label.className = "tier-" + call.tier;
+        label.textContent = call.name + (call.denied ? " (denied)" : "") + " [" + call.tier + "]";
+        line.appendChild(dot);
+        line.appendChild(label);
+        wrap.appendChild(line);
+      }
+    }
+    container.appendChild(wrap);
+  }
+
+  function renderPendingConfirmation(data) {
+    const hasDestructive = data.pending_actions.some((a) => a.tier === "DESTRUCTIVE");
+    const div = document.createElement("div");
+    div.className = "msg assistant confirm-prompt" + (hasDestructive ? " destructive" : "");
+    const content = document.createElement("div");
+    content.className = "content";
+    const header = document.createElement("div");
+    header.className = "confirm-header";
+    header.textContent = hasDestructive ? "Confirmation required — destructive" : "Confirmation required";
+    content.appendChild(header);
+    for (const action of data.pending_actions) {
+      const line = document.createElement("div");
+      line.className = "confirm-action tier-" + action.tier;
+      line.textContent = "[" + action.tier + "] " + action.description;
+      content.appendChild(line);
+    }
+    const buttons = document.createElement("div");
+    buttons.className = "confirm-buttons";
+    const approveBtn = document.createElement("button");
+    approveBtn.className = "confirm-approve"; approveBtn.textContent = "Approve";
+    const denyBtn = document.createElement("button");
+    denyBtn.className = "confirm-deny"; denyBtn.textContent = "Deny";
+    buttons.appendChild(approveBtn); buttons.appendChild(denyBtn);
+    content.appendChild(buttons);
+    div.appendChild(content);
+    log.appendChild(div);
+    document.getElementById("chat-log-wrap").scrollTop = log.scrollHeight;
+    setScreen("chat");
+
+    const resolve = async (approved) => {
+      approveBtn.disabled = true; denyBtn.disabled = true;
+      setOrionState("thinking");
+      const thinking = appendMessage("assistant", "...");
+      try {
+        const response = await fetch("/chat/confirm", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirmation_id: data.confirmation_id, approved }),
+        });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const result = await response.json();
+        thinking.remove();
+        await renderChatResult(result);
+      } catch (err) {
+        thinking.remove();
+        appendMessage("error", "Confirmation failed: " + err.message);
+        setOrionState("error", "concerned");
+      }
+    };
+    approveBtn.addEventListener("click", () => resolve(true));
+    denyBtn.addEventListener("click", () => resolve(false));
+  }
+
+  let audioCtx = null, currentAudio = null, stopAmplitudeLoop = null;
+  function playReplyAudio(base64Audio, emotion) {
+    const audio = new Audio("data:audio/wav;base64," + base64Audio);
+    currentAudio = audio;
+    audio.addEventListener("play", () => {
+      setOrionState("speaking", emotion);
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaElementSource(audio);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        stopAmplitudeLoop = startAmplitudeLoop(analyser);
+      } catch (err) { /* still plays, just without amplitude-reactive bars */ }
+    });
+    const onEnd = () => {
+      if (stopAmplitudeLoop) { stopAmplitudeLoop(); stopAmplitudeLoop = null; }
+      if (currentAudio === audio) { currentAudio = null; setOrionState("idle", emotion); }
+    };
+    audio.addEventListener("ended", onEnd);
+    audio.addEventListener("pause", onEnd);
+    audio.play().catch(() => {});
+  }
+  function stopPlayback() {
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+    if (stopAmplitudeLoop) { stopAmplitudeLoop(); stopAmplitudeLoop = null; }
+  }
+
+  async function renderChatResult(data, opts = {}) {
+    conversationId = data.conversation_id;
+    if (data.status === "pending_confirmation") {
+      renderPendingConfirmation(data);
+      setOrionState("confirmation", data.emotion);
+      return;
+    }
+    const assistantDiv = appendMessage("assistant", data.reply);
+    appendToolLog(assistantDiv, data.tool_calls);
+    if (opts.playAudio && data.audio_base64) playReplyAudio(data.audio_base64, data.emotion);
+    else setOrionState("idle", data.emotion);
+  }
+
+  document.getElementById("chat-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = document.getElementById("chat-input");
+    const message = input.value.trim();
+    if (!message) return;
+    input.value = "";
+    appendMessage("user", message);
+    const thinking = appendMessage("assistant", "...");
+    setOrionState("thinking");
+    try {
+      const response = await fetch("/chat", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, conversation_id: conversationId }),
+      });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const data = await response.json();
+      thinking.remove();
+      await renderChatResult(data);
+    } catch (err) {
+      thinking.remove();
+      appendMessage("error", "Failed to get a reply: " + err.message);
+      setOrionState("error", "concerned");
+    }
+  });
+
+  // --- Quick vision: phone's own camera, same /vision/analyze endpoint
+  // and same conversation as CHAT — not a separate vision-only history. ---
+  document.getElementById("chat-attach-btn").addEventListener("click", () => document.getElementById("chat-file-input").click());
+  document.getElementById("chat-file-input").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const imageBase64 = reader.result.split(",")[1];
+      const question = "Describe what's in this image.";
+      appendMessage("user", "[Photo attached] " + question);
+      const thinking = appendMessage("assistant", "...");
+      setOrionState("thinking");
+      try {
+        const res = await fetch("/vision/analyze", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversation_id: conversationId, image_base64: imageBase64, question }),
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        conversationId = data.conversation_id;
+        thinking.remove();
+        appendMessage("assistant", data.reply);
+        setOrionState("idle");
+      } catch (err) {
+        thinking.remove();
+        appendMessage("error", "Photo analysis failed: " + err.message);
+        setOrionState("error", "concerned");
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  });
+
+  // --- Push-to-talk voice: two mic buttons (Home FAB + Chat inline),
+  // one shared recording flow — same /chat/voice contract as desktop. ---
+  let mediaRecorder = null, chunks = [];
+  async function startRecording() {
+    stopPlayback();
+    let stream;
+    const insecureMsg = orionInsecureContextMessage();
+    if (insecureMsg) { appendMessage("error", insecureMsg); return; }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      appendMessage("error", "Microphone access denied or unavailable: " + err.message);
+      return;
+    }
+    chunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    let stopListeningAmplitude = null;
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      if (stopListeningAmplitude) stopListeningAmplitude();
+      sendRecording(new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" }));
+    };
+    mediaRecorder.start();
+    setOrionState("listening");
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+      stopListeningAmplitude = startAmplitudeLoop(analyser);
+    } catch (err) { /* recording still works without waveform reactivity */ }
+  }
+  function finishRecording() {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+  }
+  async function sendRecording(blob) {
+    micButtons.forEach((b) => b.classList.add("processing"));
+    setOrionState("thinking");
+    setScreen("chat");
+    const thinking = appendMessage("assistant", "...");
+    try {
+      const form = new FormData();
+      form.append("audio", blob, "recording.webm");
+      if (conversationId !== null) form.append("conversation_id", conversationId);
+      const response = await fetch("/chat/voice", { method: "POST", body: form });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const data = await response.json();
+      thinking.remove();
+      const userDiv = appendMessage("user", data.transcribed_text || "(inaudible)");
+      userDiv.classList.add("voice");
+      await renderChatResult(data, { playAudio: true });
+    } catch (err) {
+      thinking.remove();
+      appendMessage("error", "Voice request failed: " + err.message);
+      setOrionState("error", "concerned");
+    } finally {
+      micButtons.forEach((b) => b.classList.remove("processing"));
+    }
+  }
+  micButtons.forEach((btn) => {
+    btn.addEventListener("mousedown", startRecording);
+    btn.addEventListener("touchstart", (e) => { e.preventDefault(); startRecording(); });
+    btn.addEventListener("mouseup", finishRecording);
+    btn.addEventListener("mouseleave", finishRecording);
+    btn.addEventListener("touchend", (e) => { e.preventDefault(); finishRecording(); });
+  });
+
+  // --- Health / online status ---
+  async function pollHealth() {
+    const chip = document.getElementById("online-status");
+    const text = document.getElementById("online-status-text");
+    try {
+      const res = await fetch("/health");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      chip.className = "status-chip online";
+      text.textContent = "ONLINE";
+      if (orbWrap.dataset.state === "offline") setOrionState("idle");
+    } catch (err) {
+      chip.className = "status-chip offline";
+      text.textContent = "OFFLINE";
+      setOrionState("offline");
+    }
+  }
+  pollHealth();
+  setInterval(pollHealth, 15000);
+
+  // --- Device registry: this phone reports its own real stats, same
+  // WebSocket contract as index.html (core/realtime.py doesn't
+  // distinguish client templates, just devices). ---
+  function getDeviceId() {
+    let id = localStorage.getItem("orion-device-id");
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : "dev-" + Date.now() + "-" + Math.random().toString(16).slice(2));
+      localStorage.setItem("orion-device-id", id);
+    }
+    return id;
+  }
+  function getDeviceLabel() {
+    const standalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+    return standalone ? "phone (installed)" : "phone (browser)";
+  }
+
+  let ws = null, wsReconnectTimer = null;
+  function connectWebSocket() {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const url = proto + "//" + location.host + "/ws?device_id=" + encodeURIComponent(getDeviceId()) + "&label=" + encodeURIComponent(getDeviceLabel());
+    ws = new WebSocket(url);
+    const IDLE_ISH_STATES = ["idle", "connecting", "offline"];
+    ws.addEventListener("open", () => {
+      const el = document.getElementById("ws-status-sub");
+      if (el) el.textContent = "CONNECTED";
+      sendDeviceStats();
+      if (orbWrap.dataset.state === "connecting") setOrionState("idle");
+    });
+    ws.addEventListener("close", () => {
+      const el = document.getElementById("ws-status-sub");
+      if (el) el.textContent = "RECONNECTING";
+      if (IDLE_ISH_STATES.includes(orbWrap.dataset.state)) setOrionState("connecting");
+      clearTimeout(wsReconnectTimer);
+      wsReconnectTimer = setTimeout(connectWebSocket, 3000);
+    });
+    ws.addEventListener("error", () => ws.close());
+    ws.addEventListener("message", (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "notification") handleIncomingNotification(msg);
+        if (msg.type === "tool_use" && (orbWrap.dataset.state === "thinking" || orbWrap.dataset.state === "tool_use")) setOrionState("tool_use");
+      } catch (err) { /* ignore malformed frames */ }
+    });
+  }
+  async function sendDeviceStats() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const stats = {};
+    try {
+      if (navigator.getBattery) {
+        const battery = await navigator.getBattery();
+        stats.battery_percent = Math.round(battery.level * 100);
+        stats.charging = battery.charging;
+      }
+    } catch (err) { /* Battery Status API not available */ }
+    if (navigator.connection && navigator.connection.effectiveType) stats.connection_type = navigator.connection.effectiveType;
+    if (navigator.deviceMemory) stats.device_memory_gb = navigator.deviceMemory;
+    try {
+      if (navigator.permissions && navigator.geolocation) {
+        const status = await navigator.permissions.query({ name: "geolocation" });
+        if (status.state === "granted") {
+          await new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => { stats.lat = pos.coords.latitude; stats.lon = pos.coords.longitude; resolve(); },
+              () => resolve(), { timeout: 2000 },
+            );
+          });
+        }
+      }
+    } catch (err) { /* permissions API unsupported */ }
+    ws.send(JSON.stringify({ type: "stats", stats }));
+  }
+  connectWebSocket();
+  setInterval(sendDeviceStats, 20000);
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+
+  // --- Proactive notifications (More screen) ---
+  function fmtNotifTime(unixSeconds) { return new Date(unixSeconds * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+  function renderNotificationRow(n) {
+    return (
+      '<div class="notif-row ' + (n.category === "task" ? "task" : "") + '">' +
+      '<div class="n-head"><span>' + n.title + '</span><span>' + fmtNotifTime(n.created_at) + '</span></div>' +
+      '<div class="n-body">' + (n.body || "") + '</div></div>'
+    );
+  }
+  function handleIncomingNotification(n) {
+    const list = document.getElementById("notif-list");
+    if (list.querySelector(".no-gpu")) list.innerHTML = "";
+    list.insertAdjacentHTML("afterbegin", renderNotificationRow(n));
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      try { new Notification(n.title, { body: n.body }); } catch (err) { /* some browsers restrict this outside a user gesture */ }
+    }
+    if (wakeArmed) speakNotification(n);
+  }
+  async function speakNotification(n) {
+    try {
+      const emotion = n.category === "task" ? "concerned" : "neutral";
+      const res = await fetch("/voice/synthesize", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: n.title + ". " + (n.body || ""), emotion }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      playReplyAudio(data.audio_base64, emotion);
+    } catch (err) { /* nice-to-have only */ }
+  }
+  async function pollProactiveView() {
+    try {
+      const data = await (await fetch("/proactive/notifications")).json();
+      document.getElementById("proactive-toggle-btn").textContent = data.enabled ? "ON — DISABLE" : "OFF — ENABLE";
+      document.getElementById("notif-count").textContent = String(data.notifications.length).padStart(2, "0");
+      const list = document.getElementById("notif-list");
+      list.innerHTML = data.notifications.length ? data.notifications.map(renderNotificationRow).join("") : '<div class="no-gpu">Nothing surfaced yet.</div>';
+    } catch (err) { /* leave last-known feed on screen */ }
+  }
+  document.getElementById("proactive-toggle-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("proactive-toggle-btn");
+    const currentlyOn = btn.textContent.startsWith("ON");
+    try {
+      const res = await fetch("/proactive/toggle", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !currentlyOn }),
+      });
+      const data = await res.json();
+      btn.textContent = data.enabled ? "ON — DISABLE" : "OFF — ENABLE";
+    } catch (err) { /* leave button as-is on failure */ }
+  });
+  document.getElementById("proactive-check-btn").addEventListener("click", async () => {
+    try { await fetch("/proactive/check_now", { method: "POST" }); await pollProactiveView(); } catch (err) {}
+  });
+  document.getElementById("notif-permission-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("notif-permission-btn");
+    if (typeof Notification === "undefined") { btn.textContent = "UNSUPPORTED"; return; }
+    const perm = await Notification.requestPermission();
+    btn.textContent = perm === "granted" ? "OS ALERTS ON" : "PERMISSION DENIED";
+  });
+
+  // --- MAP: same Nominatim+OSRM+Leaflet stack and endpoint contract as
+  // index.html's LOCATION tab, condensed into single-column cards. ---
+  let locationMap = null, locationUserMarker = null, locationDestMarker = null, locationRouteLine = null;
+  let locationLat = null, locationLon = null, locationLastResult = null;
+
+  function initLocationMap() {
+    if (locationMap) { setTimeout(() => locationMap.invalidateSize(), 50); return; }
+    locationMap = L.map("location-map", { attributionControl: true }).setView([20, 0], 2);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(locationMap);
+    setTimeout(() => locationMap.invalidateSize(), 50);
+  }
+  function locationUserIcon() { return L.divIcon({ className: "", html: '<div class="location-marker-dot"></div>', iconSize: [14, 14] }); }
+  function locationDestIcon() { return L.divIcon({ className: "", html: '<div class="location-marker-dest"></div>', iconSize: [12, 12] }); }
+
+  // Same fallback as index.html: window.orionDesktop only exists inside
+  // the Electron desktop shell (desktop/preload.js), where plain
+  // navigator.geolocation fails outright — see desktop/main.js's
+  // getWindowsLocation(). A real phone browser never has orionDesktop,
+  // so this is a no-op there and falls straight through as before.
+  // Browsers refuse geolocation/mic/camera entirely outside a secure
+  // context (HTTPS, or http://localhost/127.0.0.1) — opening this page
+  // via ORION's LAN address (http://<ip>:8000, exactly how a phone
+  // reaches it) is plain HTTP on a non-localhost host, so it's not
+  // secure. This one fact explains "location and mic both silently
+  // fail" far better than two unrelated bugs would.
+  function orionInsecureContextMessage() {
+    if (window.isSecureContext) return null;
+    return "Not loaded securely (" + location.protocol + "//" + location.host + ") - location/mic need https:// or localhost.";
+  }
+
+  function orionGetCurrentPosition(onSuccess, onError, options) {
+    if (window.orionDesktop && window.orionDesktop.getLocation) {
+      window.orionDesktop.getLocation()
+        .then((loc) => onSuccess({ coords: { latitude: loc.lat, longitude: loc.lon, accuracy: loc.accuracy } }))
+        .catch((err) => onError({ code: 2, message: err.message || String(err) }));
+      return;
+    }
+    const insecureMsg = orionInsecureContextMessage();
+    if (insecureMsg) { onError({ code: 2, message: insecureMsg }); return; }
+    if (!navigator.geolocation) { onError({ code: 2, message: "Geolocation unsupported" }); return; }
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
+  }
+
+  document.getElementById("location-geo-btn").addEventListener("click", () => {
+    const statusEl = document.getElementById("location-status");
+    statusEl.textContent = "LOCATING...";
+    orionGetCurrentPosition(
+      (pos) => {
+        locationLat = pos.coords.latitude; locationLon = pos.coords.longitude;
+        statusEl.textContent = "LOCATED";
+        initLocationMap();
+        locationMap.setView([locationLat, locationLon], 14);
+        if (locationUserMarker) locationMap.removeLayer(locationUserMarker);
+        locationUserMarker = L.marker([locationLat, locationLon], { icon: locationUserIcon() }).addTo(locationMap);
+      },
+      (err) => { statusEl.textContent = "Location denied/unavailable: " + err.message; },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  });
+
+  function drawLocationRoute(destLat, destLon, routeGeometry) {
+    initLocationMap();
+    if (locationDestMarker) locationMap.removeLayer(locationDestMarker);
+    if (locationRouteLine) locationMap.removeLayer(locationRouteLine);
+    locationDestMarker = L.marker([destLat, destLon], { icon: locationDestIcon() }).addTo(locationMap);
+    const latlngs = routeGeometry.map((pair) => [pair[1], pair[0]]);
+    locationRouteLine = L.polyline(latlngs, { color: "#4fd6e8", weight: 4, opacity: 0.85 }).addTo(locationMap);
+    locationMap.fitBounds(locationRouteLine.getBounds(), { padding: [24, 24] });
+  }
+  function renderLocationSteps(steps) {
+    const list = document.getElementById("location-steps-list");
+    document.getElementById("location-steps-count").textContent = steps ? steps.length : "—";
+    if (!steps || !steps.length) { list.innerHTML = '<div class="no-gpu">Turn-by-turn is only available for the primary route.</div>'; return; }
+    list.innerHTML = steps.map((s, i) => '<div class="forecast-row"><span class="f-date">' + (i + 1) + '.</span><span class="f-cond">' + s + '</span></div>').join("");
+  }
+  function selectLocationRoute(index) {
+    if (!locationLastResult) return;
+    const data = locationLastResult;
+    const rows = document.querySelectorAll("#location-route-list .forecast-row");
+    rows.forEach((row, i) => row.style.color = i === index ? "var(--cyan-bright)" : "");
+    if (index === 0) {
+      document.getElementById("location-distance").textContent = data.distance_km + " km";
+      document.getElementById("location-eta").textContent = data.duration_minutes + " min";
+      drawLocationRoute(data.destination_lat, data.destination_lon, data.route_geometry);
+      renderLocationSteps(data.steps);
+    } else {
+      const alt = data.alternative_routes[index - 1];
+      document.getElementById("location-distance").textContent = alt.distance_km + " km";
+      document.getElementById("location-eta").textContent = alt.duration_minutes + " min";
+      drawLocationRoute(data.destination_lat, data.destination_lon, alt.route_geometry);
+      renderLocationSteps(null);
+    }
+  }
+  function renderLocationRouteList(data) {
+    const allRoutes = [{ distance_km: data.distance_km, duration_minutes: data.duration_minutes }, ...data.alternative_routes];
+    document.getElementById("location-route-count").textContent = String(allRoutes.length).padStart(2, "0");
+    const list = document.getElementById("location-route-list");
+    list.innerHTML = allRoutes.map((r, i) =>
+      '<div class="forecast-row" data-route-index="' + i + '" style="cursor:pointer' + (i === 0 ? ';color:var(--cyan-bright)' : '') + '">' +
+      '<span class="f-date">ROUTE ' + (i + 1) + (i === 0 ? " (best)" : "") + '</span>' +
+      '<span class="f-cond">' + r.distance_km + ' km</span>' +
+      '<span class="f-temps">' + r.duration_minutes + ' min</span></div>'
+    ).join("");
+    Array.from(list.querySelectorAll(".forecast-row")).forEach((row) => {
+      row.addEventListener("click", () => selectLocationRoute(parseInt(row.dataset.routeIndex, 10)));
+    });
+  }
+  document.getElementById("location-go-btn").addEventListener("click", async () => {
+    const statusEl = document.getElementById("location-status");
+    const destination = document.getElementById("location-dest-input").value.trim();
+    const mode = document.getElementById("location-mode-select").value;
+    const alternatives = document.getElementById("location-alternatives-check").checked;
+    if (locationLat === null || locationLon === null) { statusEl.textContent = "Set your location first"; return; }
+    if (!destination) { statusEl.textContent = "Enter a destination"; return; }
+    statusEl.textContent = "ROUTING...";
+    try {
+      const res = await fetch("/location/directions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ origin_lat: locationLat, origin_lon: locationLon, destination, mode, alternatives }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || ("HTTP " + res.status));
+      statusEl.textContent = "ROUTE FOUND";
+      locationLastResult = data;
+      document.getElementById("location-distance").textContent = data.distance_km + " km";
+      document.getElementById("location-eta").textContent = data.duration_minutes + " min";
+      document.getElementById("location-traffic").textContent = data.traffic === "unavailable" ? "UNAVAILABLE" : data.traffic;
+      drawLocationRoute(data.destination_lat, data.destination_lon, data.route_geometry);
+      renderLocationRouteList(data);
+      renderLocationSteps(data.steps);
+    } catch (err) {
+      statusEl.textContent = "FAILED: " + err.message;
+    }
+  });
+
+  let locationMediaRecorder = null, locationChunks = [];
+  async function startLocationMic() {
+    const insecureMsg = orionInsecureContextMessage();
+    if (insecureMsg) { document.getElementById("location-status").textContent = insecureMsg; return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      locationChunks = [];
+      locationMediaRecorder = new MediaRecorder(stream);
+      locationMediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) locationChunks.push(e.data); };
+      locationMediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(locationChunks, { type: locationMediaRecorder.mimeType || "audio/webm" });
+        const statusEl = document.getElementById("location-status");
+        statusEl.textContent = "TRANSCRIBING...";
+        try {
+          const form = new FormData();
+          form.append("audio", blob, "recording.webm");
+          const res = await fetch("/voice/transcribe", { method: "POST", body: form });
+          const data = await res.json();
+          document.getElementById("location-dest-input").value = data.text || "";
+          statusEl.textContent = data.text ? "TRANSCRIBED" : "COULD NOT TRANSCRIBE";
+        } catch (err) {
+          statusEl.textContent = "Transcription failed: " + err.message;
+        }
+      };
+      locationMediaRecorder.start();
+      document.getElementById("location-mic-btn").classList.add("recording");
+    } catch (err) {
+      document.getElementById("location-status").textContent = "Microphone unavailable: " + err.message;
+    }
+  }
+  function stopLocationMic() {
+    if (locationMediaRecorder && locationMediaRecorder.state !== "inactive") locationMediaRecorder.stop();
+    document.getElementById("location-mic-btn").classList.remove("recording");
+  }
+  const locationMicBtn = document.getElementById("location-mic-btn");
+  locationMicBtn.addEventListener("mousedown", startLocationMic);
+  locationMicBtn.addEventListener("mouseup", stopLocationMic);
+  locationMicBtn.addEventListener("mouseleave", stopLocationMic);
+  locationMicBtn.addEventListener("touchstart", (e) => { e.preventDefault(); startLocationMic(); });
+  locationMicBtn.addEventListener("touchend", (e) => { e.preventDefault(); stopLocationMic(); });
+
+  // --- WEATHER: same Open-Meteo endpoints, reuses LOCATION's coords if
+  // already granted. ---
+  let weatherLat = null, weatherLon = null;
+  async function fetchWeather(lat, lon) {
+    const statusEl = document.getElementById("weather-status");
+    try {
+      const [currentRes, forecastRes] = await Promise.all([
+        fetch("/weather/current?lat=" + lat + "&lon=" + lon),
+        fetch("/weather/forecast?lat=" + lat + "&lon=" + lon + "&days=5"),
+      ]);
+      const current = await currentRes.json();
+      if (!currentRes.ok) throw new Error(current.detail || "HTTP " + currentRes.status);
+      const forecastData = await forecastRes.json();
+      statusEl.textContent = "Live at (" + lat.toFixed(3) + ", " + lon.toFixed(3) + ")";
+      document.getElementById("weather-temp").textContent = Math.round(current.temperature_c) + "°C";
+      document.getElementById("weather-conditions").textContent = current.conditions;
+      document.getElementById("weather-feels-like").textContent = Math.round(current.feels_like_c) + "°C";
+      document.getElementById("weather-humidity").textContent = current.humidity_percent + "%";
+      document.getElementById("weather-wind").textContent = current.wind_speed_kmh + " km/h";
+      const chip = document.getElementById("weather-chip-mini");
+      chip.textContent = Math.round(current.temperature_c) + "°C";
+      const forecast = forecastData.forecast || [];
+      document.getElementById("weather-forecast-sub").textContent = forecast.length + " DAYS";
+      const list = document.getElementById("weather-forecast-list");
+      list.innerHTML = forecast.length
+        ? forecast.map((day) =>
+            '<div class="forecast-row"><span class="f-date">' + day.date + '</span>' +
+            '<span class="f-cond">' + day.conditions + '</span>' +
+            '<span class="f-temps">' + Math.round(day.temp_max_c) + '&deg; / ' + Math.round(day.temp_min_c) + '&deg;</span>' +
+            '<span class="f-precip">' + day.precipitation_probability_percent + '%</span></div>'
+          ).join("")
+        : '<div class="no-gpu">No forecast available.</div>';
+    } catch (err) {
+      statusEl.textContent = "Weather unavailable: " + err.message;
+    }
+  }
+  document.getElementById("weather-geo-btn").addEventListener("click", () => {
+    const statusEl = document.getElementById("weather-status");
+    statusEl.textContent = "LOCATING...";
+    orionGetCurrentPosition(
+      (pos) => { weatherLat = pos.coords.latitude; weatherLon = pos.coords.longitude; fetchWeather(weatherLat, weatherLon); },
+      (err) => { statusEl.textContent = "Location denied/unavailable: " + err.message; },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  });
+  function pollWeatherView() {
+    if (weatherLat === null && locationLat !== null) { weatherLat = locationLat; weatherLon = locationLon; }
+    if (weatherLat !== null) fetchWeather(weatherLat, weatherLon);
+  }
+
+  // --- Wake word ("ORION") — same Porcupine flow as desktop. On a phone
+  // browser this only stays alive while the tab is foregrounded (a real
+  // browser limitation, not something ORION can work around client-side);
+  // push-to-talk above is the reliable path either way. ---
+  const wakeStatusText = document.getElementById("wake-status-text");
+  const orionStatusChip = document.getElementById("orion-status-chip");
+  let porcupine = null, wakeArmed = false;
+  function setWakeStatus(cls, text) {
+    orionStatusChip.dataset.wake = cls || "";
+    wakeStatusText.textContent = text;
+  }
+  const SILENCE_MS = 1200, MAX_RECORDING_MS = 15000, SPEECH_RMS_THRESHOLD = 0.02;
+  async function recordUntilSilence() {
+    stopPlayback();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new AudioContext();
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
+    const buf = new Float32Array(analyser.fftSize);
+    const chunks = [];
+    const recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    const done = new Promise((resolve) => {
+      recorder.onstop = () => { stream.getTracks().forEach((t) => t.stop()); ctx.close(); resolve(new Blob(chunks, { type: recorder.mimeType || "audio/webm" })); };
+    });
+    recorder.start();
+    setOrionState("listening");
+    let hasSpoken = false, silenceStart = null;
+    const startTime = Date.now();
+    await new Promise((resolve) => {
+      const tick = () => {
+        analyser.getFloatTimeDomainData(buf);
+        let sumSquares = 0;
+        for (let i = 0; i < buf.length; i++) sumSquares += buf[i] * buf[i];
+        const rms = Math.sqrt(sumSquares / buf.length);
+        targetAmplitude = Math.min(1, rms * 6);
+        const now = Date.now();
+        if (rms > SPEECH_RMS_THRESHOLD) { hasSpoken = true; silenceStart = null; }
+        else if (hasSpoken && silenceStart === null) { silenceStart = now; }
+        const elapsed = now - startTime;
+        if ((hasSpoken && silenceStart !== null && now - silenceStart > SILENCE_MS) || elapsed > MAX_RECORDING_MS) { resolve(); return; }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    recorder.stop();
+    targetAmplitude = 0;
+    return done;
+  }
+  async function onWakeWordDetected() {
+    if (!wakeArmed) return;
+    setWakeStatus("triggered", "ORION heard — listening...");
+    try { await window.WebVoiceProcessor.WebVoiceProcessor.unsubscribe(porcupine); } catch (err) {}
+    try {
+      const blob = await recordUntilSilence();
+      await sendRecording(blob);
+    } catch (err) {
+      appendMessage("error", "Wake-word recording failed: " + err.message);
+    } finally {
+      if (wakeArmed) {
+        try {
+          await window.WebVoiceProcessor.WebVoiceProcessor.subscribe(porcupine);
+          setWakeStatus("armed", "Listening for wake word...");
+        } catch (err) {
+          setWakeStatus("error", "Wake word: failed to resume (" + err.message + ")");
+        }
+      }
+    }
+  }
+  async function initWakeWord() {
+    if (!window.PorcupineWeb || !window.WebVoiceProcessor) { setWakeStatus("", "Wake word: unavailable"); return; }
+    let accessKey = "";
+    try {
+      const cfg = await (await fetch("/config/voice")).json();
+      accessKey = cfg.picovoice_access_key || "";
+    } catch (err) { setWakeStatus("error", "Wake word: couldn't reach /config/voice"); return; }
+    if (!accessKey) { setWakeStatus("", "Wake word: not configured"); return; }
+    const keywordPath = "models/orion_keyword.ppn";
+    const keywordCheck = await fetch(keywordPath, { method: "HEAD" }).catch(() => null);
+    if (!keywordCheck || !keywordCheck.ok) { setWakeStatus("", "Wake word: keyword file missing"); return; }
+    try {
+      porcupine = await window.PorcupineWeb.PorcupineWorker.create(
+        accessKey, { publicPath: keywordPath, label: "orion" }, onWakeWordDetected,
+        { publicPath: "models/porcupine_params.pv" },
+        { processErrorCallback: (err) => setWakeStatus("error", "Wake word error: " + err) },
+      );
+      await window.WebVoiceProcessor.WebVoiceProcessor.subscribe(porcupine);
+      wakeArmed = true;
+      setWakeStatus("armed", "Listening for wake word...");
+    } catch (err) {
+      setWakeStatus("error", "Wake word: init failed (" + err.message + ")");
+    }
+  }
+  initWakeWord();
+</script>
+</body>
+</html>

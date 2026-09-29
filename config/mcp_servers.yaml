@@ -8,9 +8,21 @@
   path: mcp_servers/web_server.py
 - name: calendar
   path: mcp_servers/calendar/server.py
+- name: icloud_calendar
+  path: mcp_servers/icloud_calendar/server.py
 - name: gmail
   path: mcp_servers/gmail/server.py
 - name: tasks
   path: mcp_servers/tasks/server.py
 - name: coding
   path: mcp_servers/coding/server.py
+- name: vision
+  path: mcp_servers/vision/server.py
+- name: computer
+  path: mcp_servers/computer/server.py
+- name: location
+  path: mcp_servers/location/server.py
+- name: weather
+  path: mcp_servers/weather/server.py
+- name: files
+  path: mcp_servers/files/server.py

@@ -11,12 +11,31 @@ web_search: READ
 web_fetch: READ
 
 # Phase 2 — Google Calendar
+# v1.2 Stage 6 (low-friction permissions): create/update moved from
+# SENSITIVE to REVERSIBLE per the expanded spec's explicit "routine
+# calendar actions should not require repeated approval" — a real,
+# deliberate loosening of the exact gate this project added after the
+# Phase 2 incident (an accidental event created on the primary calendar
+# during testing, before this confirmation flow existed). Delete stays
+# DESTRUCTIVE — the spec is explicit that destructive/irreversible
+# actions keep the high-friction gate; only routine reversible ones lose it.
 calendar_get_events: READ
 calendar_search: READ
 calendar_find_free_time: READ
-calendar_create_event: SENSITIVE
-calendar_update_event: SENSITIVE
+calendar_create_event: REVERSIBLE
+calendar_update_event: REVERSIBLE
 calendar_delete_event: DESTRUCTIVE
+
+# v1.1 — iCloud Calendar (CalDAV), a second independent calendar source
+# alongside Google Calendar above. Prefixed icloud_calendar_* since
+# Ollama's tool namespace is flat across every connected MCP server.
+# create/update: same v1.2 Stage 6 low-friction change as Google Calendar above.
+icloud_calendar_list_calendars: READ
+icloud_calendar_get_events: READ
+icloud_calendar_search: READ
+icloud_calendar_create_event: REVERSIBLE
+icloud_calendar_update_event: REVERSIBLE
+icloud_calendar_delete_event: DESTRUCTIVE
 
 # Phase 2 — Gmail
 gmail_search: READ
@@ -55,3 +74,46 @@ run_command_allowlist:
   - pytest
   - python
   - git
+
+# v1.2 Stage 3 — vision. A small separate model (moondream) describes
+# images qwen3:8b itself can't see; computer_screenshot lives in the
+# vision server since a screenshot is a vision input, not a control
+# action (see mcp_servers/computer/ for actual mouse/keyboard control).
+vision_describe_image: READ
+computer_screenshot: SENSITIVE
+
+# v1.2 Stage 14 — active vision tracking. Starting it is a real, ongoing
+# privacy-relevant behavior change (continuous camera watching, not a
+# one-shot capture) so it stays SENSITIVE; stopping it is always safe.
+vision_start_tracking: SENSITIVE
+vision_stop_tracking: SAFE
+
+# v1.2 Stage 4 — real mouse/keyboard automation via pyautogui. Full
+# remote control of the user's actual input devices — every action-
+# taking tool here is DESTRUCTIVE, no exceptions. Only the read-only
+# status check is READ.
+computer_move_mouse: DESTRUCTIVE
+computer_click: DESTRUCTIVE
+computer_type_text: DESTRUCTIVE
+computer_press_key: DESTRUCTIVE
+computer_cursor_status: READ
+
+# v1.2 Stage 5 — location/maps (keyless OpenStreetMap stack: Nominatim +
+# OSRM). All read-only lookups, no side effects.
+location_find_nearby: READ
+location_get_directions: READ
+location_estimate_travel_time: READ
+
+# v1.2 Stage 7 — weather (Open-Meteo, keyless). Read-only lookups.
+weather_get_current: READ
+weather_get_forecast: READ
+
+# v1.2 Stage 11 — broader personal-file search (config/authorized_paths.yaml).
+# Separate from the coding sandbox's own list_files/read_file. Never
+# exposes file contents — list/search/find/metadata are READ; open_file
+# actually launches a real external program, so it's SENSITIVE.
+list_directory: READ
+search_files: READ
+find_file: READ
+get_file_metadata: READ
+open_file: SENSITIVE

@@ -8,8 +8,13 @@ tavily-python
 google-auth
 google-auth-oauthlib
 google-api-python-client
+caldav
 pytest
 faster-whisper
 kokoro-onnx
 soundfile
 python-multipart
+psutil
+pyautogui
+Pillow
+httpx

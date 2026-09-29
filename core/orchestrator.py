@@ -23,7 +23,7 @@ import yaml
 from fastmcp import Client
 from ollama import AsyncClient
 
-from core import permissions
+from core import permissions, realtime
 from core.memory import store
 
 # If tool calls come back unreliable, try "qwen3.5:9b" instead and
@@ -62,8 +62,16 @@ than useless — if you need a tool to answer, call it immediately and
 give the real answer in this response, not a promise to get to it.
 The only reason a SENSITIVE or DESTRUCTIVE action pauses is a real
 confirmation prompt the system itself inserts — not something you
-need to ask permission for in words first; ordinary READ/SAFE lookups
-never need permission to proceed."""
+need to ask permission for in words first. Routine reversible actions
+(creating or updating a calendar event, a task, a reminder) execute
+immediately with no pause at all — don't ask "should I go ahead?" or
+"are you sure?" in words before or after doing one; if the request
+already gave you what you need (what, when), that's authorization
+enough. Report what you actually did, past tense, in one line — "Done.
+I've added it for 6 PM tomorrow." — not a question, not a second
+confirmation prompt. Sending an email is the one everyday action that
+still genuinely needs the human to say yes first; treat that
+differently from the rest on purpose."""
 
 # Some sampling variance so factual/simple questions don't collapse into
 # the same phrasing every time; still grounded, not scattershot.
@@ -190,6 +198,16 @@ class Orchestrator:
             tier = permissions.classify_tool_call(name, args)
             print(f"[orion] tool call: {name}({args}) [tier: {tier}]")
             tool_calls_made.append({"name": name, "tier": tier})
+            # v1.2 Stage 9: a real, live signal for the orb's TOOL_USE state —
+            # reuses Stage 1's existing WebSocket rather than inventing a new
+            # channel. Best-effort: a slow/dead client shouldn't block a tool
+            # call, so failures here are swallowed (broadcast() itself already
+            # prunes dead sockets; this guards the rare case a device
+            # disconnects mid-send).
+            try:
+                await realtime.manager.broadcast({"type": "tool_use", "tool": name, "tier": tier})
+            except Exception:
+                pass
 
             client = self.tool_to_client.get(name)
             if client is None:
@@ -269,7 +287,7 @@ class Orchestrator:
             "emotion": _classify_emotion(tool_calls_made),
         }
 
-    async def chat(self, user_message: str, conversation_id: int | None = None) -> dict[str, Any]:
+    async def chat(self, user_message: str, conversation_id: int | None = None, is_voice: bool = False) -> dict[str, Any]:
         if conversation_id is None or not store.conversation_exists(conversation_id):
             conversation_id = store.create_conversation()
 
@@ -281,6 +299,20 @@ class Orchestrator:
         # hallucinated against whatever date happens to be in its training data.
         now = datetime.now().astimezone()
         system_prompt = f"{ORION_SYSTEM_PROMPT}\n\nCurrent date and time: {now.strftime('%A, %Y-%m-%d %H:%M %Z')}."
+        if is_voice:
+            # v1.2 Stage 10 — voice-first: this response gets spoken aloud
+            # (interfaces/voice/tts.py), not just displayed. The "don't
+            # pad with a reflexive follow-up question" rule already applies
+            # to text; make it a hard rule here, since a trailing question
+            # read aloud reads as far more naggy than the same text on screen.
+            system_prompt += (
+                "\n\nThis reply will be spoken aloud, not just displayed. Keep it "
+                "brief and conversational — no headers, no bullet lists, no markdown "
+                "at all. Do not end with a follow-up question or offer unless the "
+                "user's own request genuinely requires one more piece of information "
+                "to complete; a spoken reflexive \"anything else?\" reads as far more "
+                "naggy out loud than the same line on screen."
+            )
         messages = [{"role": "system", "content": system_prompt}, *history]
 
         response = await self._ollama_chat(messages)

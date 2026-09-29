@@ -64,10 +64,27 @@ _DESCRIPTIONS = {
     ),
     "calendar_update_event": lambda a: f"Update calendar event {a.get('event_id', '?')}",
     "calendar_delete_event": lambda a: f"Permanently delete calendar event {a.get('event_id', '?')}",
+    "icloud_calendar_create_event": lambda a: (
+        f"Create iCloud calendar event '{a.get('summary', '?')}' from {a.get('start', '?')} to {a.get('end', '?')}"
+        + (f" on calendar {a['calendar_name']}" if a.get("calendar_name") else "")
+    ),
+    "icloud_calendar_update_event": lambda a: f"Update iCloud calendar event {a.get('uid', '?')}",
+    "icloud_calendar_delete_event": lambda a: f"Permanently delete iCloud calendar event {a.get('uid', '?')}",
     "gmail_send_draft": lambda a: f"Send email draft {a.get('draft_id', '?')} — this delivers real mail, not reversible",
     "write_file": lambda a: f"Write to '{a.get('path', '?')}' in the coding workspace (overwrites if it exists)",
     "edit_file": lambda a: f"Edit '{a.get('path', '?')}' in the coding workspace",
     "run_command": lambda a: f"Run command: {a.get('command', '?')}",
+    "computer_screenshot": lambda a: "Capture whatever is currently on screen" + (f" and describe it: {a['question']}" if a.get("question") else ""),
+    "computer_move_mouse": lambda a: f"Move the mouse to ({a.get('x', '?')}, {a.get('y', '?')})",
+    "computer_click": lambda a: (
+        f"{a.get('button', 'left')}-click"
+        + (f" {a['clicks']}x" if a.get("clicks", 1) != 1 else "")
+        + (f" at ({a['x']}, {a['y']})" if a.get("x") is not None and a.get("y") is not None else " at the current cursor position")
+    ),
+    "computer_type_text": lambda a: f"Type this text on the real keyboard: \"{a.get('text', '?')}\"",
+    "computer_press_key": lambda a: f"Press the key(s): {a.get('key', '?')}",
+    "open_file": lambda a: f"Open '{a.get('path', '?')}' in its default application",
+    "vision_start_tracking": lambda a: f"Start continuously watching the webcam (checking roughly every {a.get('interval_seconds', 5)}s) and describing what changes",
 }
 
 

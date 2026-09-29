@@ -2,297 +2,384 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ORION</title>
+<!-- v1.2 Stage 13: send real phone browsers to the genuinely separate
+     mobile-first layout (mobile.html) rather than this desktop grid. A
+     "switch to desktop layout" visit sets orion-prefer-desktop so it
+     sticks — this never traps anyone who deliberately wants this page. -->
+<script>
+  (function () {
+    try {
+      if (localStorage.getItem("orion-prefer-desktop") === "1") return;
+      var isTouch = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
+      var isNarrow = window.matchMedia("(max-width: 820px)").matches;
+      if (isTouch && isNarrow) location.replace("mobile.html");
+    } catch (err) { /* if anything here throws, just show the desktop layout */ }
+  })();
+</script>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#04080b">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+<!-- Vendored (not CDN), same convention as the Porcupine/WebVoiceProcessor
+     bundles below — a plain <link>, no bundler needed. -->
+<link rel="stylesheet" href="vendor/leaflet.css">
 <style>
   :root {
-    --bg: #04070a;
-    --panel: #070d12;
-    --border: #113a44;
-    --cyan: #4df3ff;
-    --cyan-dim: #1c8a9a;
-    --text: #cdeff5;
-    --text-dim: #6f98a1;
-    --tier-read: #3ddc97;
-    --tier-safe: #4fd6ff;
-    --tier-reversible: #ffd166;
-    --tier-sensitive: #ff9f43;
-    --tier-destructive: #ff4d6d;
+    --bg: #04080b;
+    --panel: rgba(8, 20, 26, .72);
+    --panel-solid: #08141a;
+    --border: rgba(79, 214, 232, .14);
+    --border-strong: rgba(79, 214, 232, .3);
+    --cyan: #4fd6e8;
+    --cyan-bright: #eafcff;
+    --cyan-dim: rgba(79, 214, 232, .5);
+    --text: #cfe9ef;
+    --text-mid: #a9c8ce;
+    --text-dim: #84a6ae;
+    --text-dimmer: #5f8792;
+    --text-faint: #4d7480;
+    --text-faintest: #3f6570;
+    --amber: #f0b45f;
+    --green: #63f0a8;
+    --red: #e06a6a;
+    --tier-read: #63f0a8;
+    --tier-safe: #4fd6e8;
+    --tier-reversible: #f0b45f;
+    --tier-sensitive: #f0b45f;
+    --tier-destructive: #e06a6a;
+    --font-ui: 'Chakra Petch', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
   }
 
   * { box-sizing: border-box; }
 
-  body {
-    background: radial-gradient(ellipse at 50% -10%, #0a1820 0%, var(--bg) 55%);
+  html, body {
+    background: var(--bg);
     color: var(--text);
-    font-family: "Consolas", "SFMono-Regular", ui-monospace, monospace;
+    font-family: var(--font-ui);
     margin: 0;
-    min-height: 100vh;
+    height: 100%;
+  }
+
+  body {
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    background: radial-gradient(1200px 700px at 50% 20%, #071720 0%, var(--bg) 62%);
+    position: relative;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(79, 214, 232, .045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(79, 214, 232, .045) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  button { font-family: inherit; }
+  .mono { font-family: var(--font-mono); }
+
+  @keyframes orionSpin { to { transform: rotate(360deg); } }
+  @keyframes orionSpinRev { to { transform: rotate(-360deg); } }
+  @keyframes orionPulse { 0%, 100% { opacity: .25; transform: scale(1); } 50% { opacity: .7; transform: scale(1.06); } }
+  @keyframes orionBar { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+  @keyframes orionBlink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+  @keyframes pulse-fast { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+  /* ---------- Header ---------- */
+  #topbar {
+    position: relative;
+    z-index: 1;
+    flex: none;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    padding: 2rem 1rem;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(7, 18, 24, .7);
+  }
+  .topbar-left { display: flex; align-items: center; gap: 14px; }
+  .brand-mark { display: flex; align-items: center; gap: 9px; }
+  .brand-ring { width: 20px; height: 20px; border: 1.5px solid var(--cyan); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; }
+  .brand-ring .dot { width: 6px; height: 6px; background: var(--cyan); border-radius: 50%; }
+  .brand-name { font-size: 19px; font-weight: 700; letter-spacing: .34em; color: var(--cyan-bright); }
+  .status-chip {
+    display: flex; align-items: center; gap: 7px; padding: 4px 10px;
+    border: 1px solid var(--border-strong); border-radius: 3px; background: rgba(79, 214, 232, .06);
+  }
+  .status-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faintest); flex: none; }
+  .status-chip.online .dot { background: var(--green); animation: orionBlink 2.4s ease-in-out infinite; }
+  .status-chip.online span.label { color: var(--green) !important; }
+  .status-chip.offline .dot { background: var(--red); }
+  .status-chip.offline span.label { color: var(--red) !important; }
+  .status-chip .label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .18em; color: var(--text-dim); }
+
+  .topbar-center { display: flex; align-items: center; gap: 14px; font-family: var(--font-mono); font-size: 13px; color: var(--text-mid); }
+  .topbar-center .sep { color: rgba(79, 214, 232, .35); }
+  .topbar-center .clock { letter-spacing: .1em; color: var(--cyan-bright); }
+  .topbar-center .date { letter-spacing: .08em; }
+
+  .topbar-right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+  .weather-chip {
+    display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+    border: 1px solid var(--border); border-radius: 3px; background: rgba(10, 25, 33, .8);
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-faintest); letter-spacing: .1em;
+  }
+  .icon-btn {
+    width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 3px;
+    display: flex; align-items: center; justify-content: center; color: var(--text-dim);
+    background: transparent; cursor: pointer; font-size: 14px;
+  }
+  .icon-btn:hover:not(:disabled) { border-color: var(--cyan); color: var(--cyan-bright); }
+  .icon-btn:disabled { opacity: .35; cursor: default; }
+
+  /* ---------- Tabs ---------- */
+  #tabbar {
+    position: relative; z-index: 1;
+    display: flex; gap: 2px; padding: 0 20px;
+    border-bottom: 1px solid var(--border); background: rgba(5, 13, 18, .7);
+  }
+  .tab {
+    padding: 10px 20px; font-family: var(--font-mono); font-size: 10px; letter-spacing: .2em;
+    cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-dimmer);
+  }
+  .tab.active { border-bottom-color: var(--cyan); color: var(--cyan-bright); background: rgba(79, 214, 232, .07); }
+  .tab-spacer {
+    margin-left: auto; display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .16em; color: var(--text-faintest);
+  }
+  .tab-spacer .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faintest); }
+  .tab-spacer.live .dot { background: var(--green); animation: orionBlink 2.4s ease-in-out infinite; }
+  .tab-spacer.live { color: var(--green); }
+
+  /* ---------- Card primitives ---------- */
+  .card {
+    border: 1px solid var(--border); background: var(--panel); border-radius: 4px;
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 12px; border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .22em; color: #7fd3e2;
+  }
+  .card-head .sub { color: var(--text-faintest); letter-spacing: 0; font-size: 10px; }
+  .card-body { padding: 12px; display: flex; flex-direction: column; gap: 11px; min-height: 0; }
+
+  .stat-row { display: flex; flex-direction: column; gap: 5px; }
+  .stat-row .line { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+  .stat-row .line .v { color: var(--cyan-bright); }
+  .stat-track { height: 3px; background: rgba(79, 214, 232, .1); }
+  .stat-fill { height: 100%; background: var(--cyan); }
+
+  .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 2px; }
+  .mini-cell { border: 1px solid var(--border); padding: 7px 6px; text-align: center; }
+  .mini-cell .k { font-family: var(--font-mono); font-size: 9px; color: var(--text-dimmer); letter-spacing: .12em; }
+  .mini-cell .v { font-family: var(--font-mono); font-size: 13px; color: var(--cyan-bright); margin-top: 3px; }
+
+  .placeholder-badge {
+    font-size: 9px; letter-spacing: .08em; color: var(--text-faintest);
+    border: 1px dashed var(--border); padding: 2px 7px; font-family: var(--font-mono);
   }
 
-  header {
-    text-align: center;
-    margin-bottom: 1.25rem;
-  }
+  /* ---------- Console layout ---------- */
+  #console-view { display: grid; grid-template-columns: 296px 1fr 348px; gap: 14px; padding: 16px; min-height: 0; }
+  #console-left { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
 
-  h1 {
-    margin: 0;
-    font-size: 1.6rem;
-    letter-spacing: 0.4em;
-    color: var(--cyan);
-    text-shadow: 0 0 12px rgba(77, 243, 255, 0.6), 0 0 30px rgba(77, 243, 255, 0.25);
-    font-weight: 600;
+  #optical-feed-box {
+    height: 150px; border: 1px solid var(--border); position: relative;
+    background-image: repeating-linear-gradient(45deg, rgba(79, 214, 232, .05) 0 6px, transparent 6px 12px);
+    display: flex; align-items: center; justify-content: center;
   }
+  #optical-feed-box span { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--text-dimmer); text-align: center; padding: 0 12px; }
+  .corner-tl, .corner-br2 { position: absolute; width: 12px; height: 12px; }
+  .corner-tl { top: 6px; left: 6px; border-left: 1px solid var(--cyan); border-top: 1px solid var(--cyan); }
+  .corner-br2 { bottom: 6px; right: 6px; border-right: 1px solid var(--cyan); border-bottom: 1px solid var(--cyan); }
+  .feed-caption { display: flex; justify-content: space-between; margin-top: 8px; font-family: var(--font-mono); font-size: 9px; color: var(--text-dimmer); letter-spacing: .1em; }
 
-  header .subtitle {
-    margin-top: 0.35rem;
-    font-size: 0.7rem;
-    letter-spacing: 0.2em;
-    color: var(--text-dim);
-    text-transform: uppercase;
+  #subsystems-list { display: flex; flex-direction: column; gap: 8px; font-family: var(--font-mono); font-size: 10px; padding: 10px 12px; }
+  .subsys-row { display: flex; justify-content: space-between; color: var(--text-mid); }
+  .subsys-row .s-ok { color: var(--green); }
+  .subsys-row .s-warn { color: var(--amber); }
+  .subsys-row .s-off { color: var(--text-dimmer); }
+  #subsystems-uptime {
+    margin-top: auto; padding: 10px 12px; border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; color: var(--text-dimmer);
   }
+  #subsystems-uptime .v { color: var(--cyan-bright); }
 
-  /* ORION core — a real state machine (idle/listening/thinking/speaking),
-     driven by data-state on #core-wrap from actual system signals (see
-     setOrionState in the script), not decorative frontend-only states. */
-  #core-wrap {
+  /* ---------- Orb ---------- */
+  #console-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 32px; min-height: 0; }
+  #orb-wrap {
     --emotion-color: var(--cyan);
     --amplitude: 0;
-    position: relative;
-    width: 120px;
-    height: 120px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0.5rem auto 1.25rem;
+    position: relative; width: 300px; height: 300px; display: flex; align-items: center; justify-content: center;
   }
+  .orb-ring { position: absolute; border-radius: 50%; box-sizing: border-box; }
+  .orb-ring-outer { width: 300px; height: 300px; border: 1px solid rgba(79, 214, 232, .12); }
+  .orb-ring-dash {
+    width: 300px; height: 300px; border: 1px dashed color-mix(in srgb, var(--emotion-color) 55%, transparent);
+    border-bottom-color: transparent; border-left-color: transparent; animation: orionSpin 22s linear infinite;
+  }
+  .orb-ring-solid {
+    width: 234px; height: 234px; border: 1.5px solid color-mix(in srgb, var(--emotion-color) 70%, transparent);
+    border-top-color: transparent; border-right-color: transparent; animation: orionSpinRev 14s linear infinite;
+  }
+  .orb-ring-pulse {
+    width: 184px; height: 184px; border: 1px solid rgba(79, 214, 232, .16);
+    background: radial-gradient(circle, color-mix(in srgb, var(--emotion-color) 18%, transparent) 0%, transparent 70%);
+    animation: orionPulse 3.6s ease-in-out infinite;
+  }
+  .orb-ring-inner {
+    width: 132px; height: 132px; border: 1px solid color-mix(in srgb, var(--emotion-color) 60%, transparent);
+    box-shadow: 0 0 44px color-mix(in srgb, var(--emotion-color) 30%, transparent) inset;
+  }
+  #orb-core {
+    position: relative; width: 78px; height: 78px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--emotion-color) 40%, transparent), rgba(8, 26, 34, .9));
+    border: 1px solid color-mix(in srgb, var(--emotion-color) 80%, transparent);
+    display: flex; align-items: center; justify-content: center; gap: 3px;
+    transition: border-color .4s ease;
+  }
+  .orb-bar { width: 3px; height: 16px; background: var(--emotion-color); border-radius: 1px; transition: background-color .4s ease; }
+  #orb-wrap[data-state="idle"] .orb-bar { animation: orionBar 2.6s ease-in-out infinite; }
+  #orb-wrap[data-state="idle"] .orb-bar:nth-child(2) { animation-delay: .15s; }
+  #orb-wrap[data-state="idle"] .orb-bar:nth-child(3) { animation-delay: .3s; }
+  #orb-wrap[data-state="idle"] .orb-bar:nth-child(4) { animation-delay: .45s; }
+  #orb-wrap[data-state="idle"] .orb-bar:nth-child(5) { animation-delay: .6s; }
+  #orb-wrap[data-state="thinking"] .orb-bar { animation: orionBar .9s ease-in-out infinite; }
+  #orb-wrap[data-state="thinking"] .orb-bar:nth-child(2) { animation-delay: .1s; }
+  #orb-wrap[data-state="thinking"] .orb-bar:nth-child(3) { animation-delay: .2s; }
+  #orb-wrap[data-state="thinking"] .orb-bar:nth-child(4) { animation-delay: .3s; }
+  #orb-wrap[data-state="thinking"] .orb-bar:nth-child(5) { animation-delay: .4s; }
+  #orb-wrap[data-state="thinking"] .orb-ring-dash { animation-duration: 6s; }
+  #orb-wrap[data-state="thinking"] .orb-ring-solid { animation-duration: 4s; }
+  /* listening/speaking bar heights are set directly from real Web Audio
+     amplitude in JS (see startAmplitudeLoop) — no canned keyframe there,
+     since faking motion under those states would misrepresent real audio. */
 
-  .core-ring {
-    position: absolute;
-    border: 1px solid var(--cyan-dim);
-    border-radius: 50%;
-    opacity: 0.18;
-  }
-  .ring-inner { width: 56px; height: 56px; }
-  .ring-mid   { width: 80px; height: 80px; }
-  .ring-outer { width: 106px; height: 106px; }
+  /* v1.2 Stage 9 — the remaining real states from the spec's own list
+     (TOOL_USE/CONFIRMATION/ERROR/CONNECTING/OFFLINE), each tied to an
+     actual signal (see setOrionState in the script) rather than invented:
+     a tool call actually in flight (pushed over Stage 1's WebSocket), a
+     real pending_confirmation response, a caught error in the core chat
+     path, the WebSocket's own reconnecting window, and the existing
+     online/offline health check. Color still comes from --emotion-color,
+     not a hardcoded state color, so the palette stays the one already
+     established rather than growing a second one. */
+  #orb-wrap[data-state="tool_use"] .orb-bar { animation: orionBar .6s ease-in-out infinite; }
+  #orb-wrap[data-state="tool_use"] .orb-bar:nth-child(2) { animation-delay: .08s; }
+  #orb-wrap[data-state="tool_use"] .orb-bar:nth-child(3) { animation-delay: .16s; }
+  #orb-wrap[data-state="tool_use"] .orb-bar:nth-child(4) { animation-delay: .24s; }
+  #orb-wrap[data-state="tool_use"] .orb-bar:nth-child(5) { animation-delay: .32s; }
+  #orb-wrap[data-state="tool_use"] .orb-ring-dash { animation-duration: 3s; }
+  #orb-wrap[data-state="tool_use"] .orb-ring-solid { animation-duration: 2s; }
 
-  .particle-orbit {
-    position: absolute;
-    inset: 0;
-    transform: rotate(var(--angle));
-    pointer-events: none;
-  }
-  .particle {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 3px;
-    height: 3px;
-    margin: -1.5px 0 0 -1.5px;
-    border-radius: 50%;
-    background: var(--cyan);
-    opacity: 0;
-    transform: translateX(50px);
-  }
+  #orb-wrap[data-state="confirmation"] #orb-core { animation: orionPulse 1.3s ease-in-out infinite; }
+  #orb-wrap[data-state="confirmation"] .orb-ring-pulse { animation-duration: 1.1s; }
+  #orb-wrap[data-state="confirmation"] .orb-ring-dash,
+  #orb-wrap[data-state="confirmation"] .orb-ring-solid { animation-play-state: paused; }
 
-  #core {
-    position: relative;
-    z-index: 2;
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 50% 50%, var(--emotion-color) 0%, var(--cyan-dim) 55%, transparent 75%);
-    box-shadow: 0 0 18px 4px color-mix(in srgb, var(--emotion-color) 55%, transparent);
-    transition: box-shadow 0.4s ease, background 0.4s ease;
-  }
+  #orb-wrap[data-state="error"] .orb-ring-dash,
+  #orb-wrap[data-state="error"] .orb-ring-solid { animation-play-state: paused; }
+  #orb-wrap[data-state="error"] .orb-bar { animation: pulse-fast .5s ease-in-out infinite; }
 
-  /* IDLE — calm, never fully static */
-  #core-wrap[data-state="idle"] #core { animation: idle-breathe 4s ease-in-out infinite; }
-  #core-wrap[data-state="idle"] .core-ring { animation: idle-ring-drift 7s ease-in-out infinite; }
-  #core-wrap[data-state="idle"] .particle { opacity: 0.18; }
-  @keyframes idle-breathe {
-    0%, 100% { transform: scale(0.88); }
-    50% { transform: scale(1.04); }
-  }
-  @keyframes idle-ring-drift {
-    0%, 100% { opacity: 0.12; transform: scale(1); }
-    50% { opacity: 0.22; transform: scale(1.03); }
-  }
+  #orb-wrap[data-state="connecting"] .orb-bar { opacity: .35; animation: orionBar 2s ease-in-out infinite; }
+  #orb-wrap[data-state="connecting"] .orb-ring-dash { animation-duration: 1s; }
+  #orb-wrap[data-state="connecting"] #orb-core { opacity: .6; }
 
-  /* LISTENING — attentive: rings pulse outward like sonar, particles
-     drawn slightly inward, waveform-reactive via --amplitude from the
-     mic's own analyser (see startRecording). */
-  #core-wrap[data-state="listening"] #core {
-    animation: listen-pulse 1s ease-in-out infinite;
-    box-shadow: 0 0 calc(20px + var(--amplitude) * 24px) calc(6px + var(--amplitude) * 10px) color-mix(in srgb, var(--emotion-color) 70%, transparent);
-  }
-  @keyframes listen-pulse {
-    0%, 100% { transform: scale(0.95); }
-    50% { transform: scale(1.06); }
-  }
-  #core-wrap[data-state="listening"] .core-ring {
-    border-color: var(--cyan);
-    animation: listen-ring-expand 1.5s ease-out infinite;
-  }
-  #core-wrap[data-state="listening"] .ring-mid { animation-delay: 0.3s; }
-  #core-wrap[data-state="listening"] .ring-outer { animation-delay: 0.6s; }
-  @keyframes listen-ring-expand {
-    0% { transform: scale(0.7); opacity: 0.55; }
-    100% { transform: scale(1.12); opacity: 0; }
-  }
-  #core-wrap[data-state="listening"] .particle {
-    opacity: 0.55;
-    animation: listen-converge 1.5s ease-in-out infinite;
-  }
-  @keyframes listen-converge {
-    0%, 100% { transform: translateX(50px); }
-    50% { transform: translateX(40px); }
-  }
+  #orb-wrap[data-state="offline"] .orb-ring-dash,
+  #orb-wrap[data-state="offline"] .orb-ring-solid { animation-play-state: paused; opacity: .08; }
+  #orb-wrap[data-state="offline"] #orb-core { opacity: .25; }
+  #orb-wrap[data-state="offline"] .orb-bar { animation: none; }
 
-  /* THINKING — orbital motion at staggered speeds, center stays stable */
-  #core-wrap[data-state="thinking"] #core { animation: idle-breathe 2s ease-in-out infinite; }
-  #core-wrap[data-state="thinking"] .particle { opacity: 0.7; }
-  #core-wrap[data-state="thinking"] .particle-orbit { animation: spin 3.2s linear infinite; }
-  #core-wrap[data-state="thinking"] .particle-orbit:nth-child(even) { animation-duration: 4.4s; animation-direction: reverse; }
-  @keyframes spin { to { transform: rotate(calc(var(--angle) + 360deg)); } }
-  #core-wrap[data-state="thinking"] .core-ring { opacity: 0.2; }
+  .orb-wordmark-group { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .orb-wordmark { font-size: 38px; font-weight: 600; letter-spacing: .42em; color: var(--cyan-bright); text-indent: .42em; }
+  #orion-status-chip {
+    display: flex; align-items: center; gap: 9px; padding: 6px 16px;
+    border: 1px solid var(--border-strong); border-radius: 2px; background: rgba(79, 214, 232, .06);
+  }
+  #orion-status-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faintest); }
+  #orion-status-chip span.label { font-family: var(--font-mono); font-size: 11px; letter-spacing: .2em; color: var(--text-dim); }
+  #orion-status-chip[data-wake="armed"] .dot { background: var(--cyan); animation: orionBlink 1.6s ease-in-out infinite; }
+  #orion-status-chip[data-wake="armed"] span.label { color: #9fe4f0; }
+  #orion-status-chip[data-wake="triggered"] .dot { background: var(--amber); animation: pulse-fast .5s ease-in-out infinite; }
+  #orion-status-chip[data-wake="triggered"] span.label { color: var(--amber); }
+  #orion-status-chip[data-wake="error"] .dot { background: var(--red); }
+  #orion-status-chip[data-wake="error"] span.label { color: var(--red); }
+  .wake-phrase-caption { font-family: var(--font-mono); font-size: 10px; letter-spacing: .16em; color: var(--text-faint); }
 
-  /* SPEAKING — core reacts to real playback amplitude via --amplitude,
-     driven per animation-frame from a Web Audio analyser on the actual
-     playing audio (see playReplyAudio). Not a canned animation. */
-  #core-wrap[data-state="speaking"] #core {
-    transform: scale(calc(1 + var(--amplitude) * 0.4));
-    box-shadow: 0 0 calc(18px + var(--amplitude) * 34px) calc(4px + var(--amplitude) * 12px) color-mix(in srgb, var(--emotion-color) 70%, transparent);
+  #mode-row { display: flex; gap: 14px; }
+  .mode-btn {
+    width: 52px; height: 52px; border: 1px solid var(--border-strong); border-radius: 3px;
+    background: rgba(10, 25, 33, .85); display: flex; align-items: center; justify-content: center;
+    font-size: 17px; color: #8fd0dd; cursor: pointer;
   }
-  #core-wrap[data-state="speaking"] .core-ring {
-    border-color: var(--emotion-color);
-    opacity: calc(0.15 + var(--amplitude) * 0.45);
-    transform: scale(calc(1 + var(--amplitude) * 0.12));
+  .mode-btn:hover:not(:disabled) { border-color: var(--cyan); color: var(--cyan-bright); }
+  .mode-btn:disabled { opacity: .3; cursor: default; }
+  .mode-btn.mic-active { border-color: var(--cyan); background: rgba(79, 214, 232, .14); color: var(--cyan-bright); box-shadow: 0 0 22px rgba(79, 214, 232, .22); }
+  .mode-btn.mic-active.recording,
+  .mode-btn.recording {
+    border-color: var(--red); background: rgba(224, 106, 106, .16); color: var(--red);
+    box-shadow: 0 0 16px rgba(224, 106, 106, .5); animation: pulse-fast .7s ease-in-out infinite;
   }
-  #core-wrap[data-state="speaking"] .particle {
-    opacity: calc(0.3 + var(--amplitude) * 0.5);
-  }
+  .mode-btn.processing { border-color: var(--amber); color: var(--amber); }
 
-  /* HUD frame around the chat log */
-  #hud {
-    position: relative;
-    width: min(720px, 100%);
-    padding: 1.5rem;
-    background: linear-gradient(180deg, rgba(10, 24, 30, 0.6), rgba(4, 8, 10, 0.6));
-    border: 1px solid var(--border);
-    box-shadow: inset 0 0 40px rgba(77, 243, 255, 0.04);
+  /* ---------- Dialogue log (console right column) ---------- */
+  #console-right { min-height: 0; display: flex; }
+  #hud { flex: 1; display: flex; flex-direction: column; min-height: 0; background: rgba(8, 20, 26, .78); }
+  #convo-header {
+    flex: none; display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 13px; border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .22em; color: #7fd3e2;
   }
+  .convo-actions { display: flex; gap: 6px; }
+  .convo-actions .icon-btn { width: auto; height: auto; padding: 4px 9px; font-size: 9px; letter-spacing: .12em; color: #7fb6c2; font-family: var(--font-mono); }
 
-  #hud::before, #hud::after,
-  #hud .corner-br, #hud .corner-bl {
-    content: "";
-    position: absolute;
-    width: 18px;
-    height: 18px;
-    border-color: var(--cyan);
-    border-style: solid;
-    opacity: 0.85;
-  }
-  #hud::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
-  #hud::after  { top: -1px; right: -1px; border-width: 2px 2px 0 0; }
-  #hud .corner-bl { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; }
-  #hud .corner-br { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
-
-  #log {
-    height: 56vh;
-    overflow-y: auto;
-    padding-right: 0.5rem;
-    margin-bottom: 1rem;
-  }
-
+  #log { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 13px; }
   #log::-webkit-scrollbar { width: 6px; }
   #log::-webkit-scrollbar-thumb { background: var(--cyan-dim); }
 
-  .msg { margin-bottom: 1rem; line-height: 1.5; font-size: 0.92rem; }
-
-  .msg .role {
-    display: block;
-    font-size: 0.68rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    margin-bottom: 0.2rem;
+  .msg { margin-bottom: 14px; }
+  .msg .role { font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em; color: var(--text-faint); display: block; margin-bottom: 5px; }
+  .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
+  .msg.user .content {
+    border: 1px solid rgba(255, 255, 255, .09); background: rgba(255, 255, 255, .035);
+    padding: 11px 12px; font-size: 14px; line-height: 1.5; color: #c3d6da; max-width: 84%; display: inline-block;
   }
+  .msg.assistant .content {
+    border: 1px solid var(--border-strong); border-left: 2px solid var(--cyan);
+    background: rgba(79, 214, 232, .05); padding: 11px 12px; font-size: 14px; line-height: 1.5; color: #d8f1f6; display: block;
+  }
+  .msg.error .content { border: 1px solid var(--red); border-left: 2px solid var(--red); background: rgba(224, 106, 106, .06); padding: 11px 12px; color: #f3caca; }
 
-  .msg.user { text-align: right; }
-  .msg.user .role { color: var(--text-dim); }
-  .msg.user .content { color: var(--text); }
-
-  .msg.assistant { border-left: 2px solid var(--cyan-dim); padding-left: 0.75rem; }
-
-  /* Rendered markdown inside .content */
-  .content p { margin: 0 0 0.6em; }
+  .content p { margin: 0 0 .6em; }
   .content p:last-child { margin-bottom: 0; }
-  .content strong { color: var(--cyan); font-weight: 600; }
-  .content em { font-style: italic; color: var(--text); }
-  .content h1, .content h2, .content h3 {
-    margin: 0.8em 0 0.4em;
-    font-size: 0.95rem;
-    letter-spacing: 0.05em;
-    color: var(--cyan);
-  }
+  .content strong { color: var(--cyan-bright); font-weight: 600; }
+  .content em { font-style: italic; }
+  .content h1, .content h2, .content h3 { margin: .8em 0 .4em; font-size: .95em; letter-spacing: .05em; color: var(--cyan-bright); }
   .content h1:first-child, .content h2:first-child, .content h3:first-child { margin-top: 0; }
-  .content ul, .content ol { margin: 0 0 0.6em; padding-left: 1.3em; }
-  .content li { margin-bottom: 0.2em; }
-  .content code {
-    background: rgba(77, 243, 255, 0.08);
-    border: 1px solid var(--border);
-    padding: 0.05em 0.35em;
-    border-radius: 2px;
-    font-size: 0.88em;
-  }
-  .content pre {
-    background: rgba(77, 243, 255, 0.05);
-    border: 1px solid var(--border);
-    padding: 0.6em 0.75em;
-    overflow-x: auto;
-    margin: 0 0 0.6em;
-  }
+  .content ul, .content ol { margin: 0 0 .6em; padding-left: 1.3em; }
+  .content li { margin-bottom: .2em; }
+  .content code { background: rgba(79, 214, 232, .1); border: 1px solid var(--border); padding: .05em .35em; border-radius: 2px; font-family: var(--font-mono); font-size: .88em; }
+  .content pre { background: rgba(79, 214, 232, .05); border: 1px solid var(--border); padding: .6em .75em; overflow-x: auto; margin: 0 0 .6em; font-family: var(--font-mono); }
   .content pre code { background: none; border: none; padding: 0; }
   .content a { color: var(--cyan); }
-  .msg.assistant .role { color: var(--cyan); }
+  .msg.voice .role::after { content: " \1F3A4"; }
 
-  .msg.error { border-left: 2px solid var(--tier-destructive); padding-left: 0.75rem; }
-  .msg.error .role { color: var(--tier-destructive); }
-
-  .tool-log {
-    margin-top: 0.4rem;
-    font-size: 0.72rem;
-  }
-
-  .tool-service {
-    font-size: 0.66rem;
-    letter-spacing: 0.12em;
-    color: var(--text-dim);
-    margin-top: 0.5rem;
-  }
+  .tool-log { margin-top: 8px; font-family: var(--font-mono); font-size: 9px; }
+  .tool-service { letter-spacing: .12em; color: var(--text-faint); margin-top: 8px; }
   .tool-service:first-child { margin-top: 0; }
-  .tool-service::before { content: "\21B3 "; opacity: 0.6; }
-
-  .tool-log .tool-line {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    color: var(--text-dim);
-    margin-top: 0.15rem;
-    padding-left: 1rem;
-  }
-
-  .tool-line .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    box-shadow: 0 0 6px currentColor;
-    flex: none;
-  }
+  .tool-service::before { content: "\21B3 "; opacity: .6; }
+  .tool-log .tool-line { display: flex; align-items: center; gap: 6px; color: var(--text-dim); margin-top: 3px; padding-left: 14px; }
+  .tool-line .dot { width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 6px currentColor; flex: none; }
 
   .tier-READ { color: var(--tier-read); }
   .tier-SAFE { color: var(--tier-safe); }
@@ -300,163 +387,511 @@
   .tier-SENSITIVE { color: var(--tier-sensitive); }
   .tier-DESTRUCTIVE { color: var(--tier-destructive); }
 
-  #form { display: flex; gap: 0.6rem; }
-
-  #input {
-    flex: 1;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 0.6rem 0.75rem;
-    font-family: inherit;
-    font-size: 0.9rem;
-    outline: none;
-  }
-  #input:focus { border-color: var(--cyan); box-shadow: 0 0 10px rgba(77, 243, 255, 0.35); }
-
-  #send {
-    background: transparent;
-    border: 1px solid var(--cyan-dim);
-    color: var(--cyan);
-    padding: 0.6rem 1.2rem;
-    font-family: inherit;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    font-size: 0.75rem;
-    cursor: pointer;
-  }
-  #send:hover { background: rgba(77, 243, 255, 0.1); border-color: var(--cyan); }
-
-  #mic {
-    background: transparent;
-    border: 1px solid var(--cyan-dim);
-    color: var(--cyan);
-    width: 42px;
-    flex: none;
-    font-family: inherit;
-    font-size: 1rem;
-    cursor: pointer;
-    user-select: none;
-    -webkit-user-select: none;
-    touch-action: none;
-  }
-  #mic:hover { background: rgba(77, 243, 255, 0.1); border-color: var(--cyan); }
-  #mic.recording {
-    background: rgba(255, 77, 109, 0.15);
-    border-color: var(--tier-destructive);
-    color: var(--tier-destructive);
-    box-shadow: 0 0 14px rgba(255, 77, 109, 0.55);
-    animation: pulse-fast 0.7s ease-in-out infinite;
-  }
-  #mic.processing {
-    border-color: var(--tier-sensitive);
-    color: var(--tier-sensitive);
-  }
-
-  .msg.voice .role::after {
-    content: " \1F3A4";
-  }
-
-  .confirm-prompt {
-    border-left: 2px solid var(--tier-sensitive);
-    padding-left: 0.75rem;
-  }
-  .confirm-prompt.destructive { border-left-color: var(--tier-destructive); }
-  .confirm-prompt .confirm-header {
-    font-size: 0.68rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    margin-bottom: 0.5rem;
-    color: var(--tier-sensitive);
-  }
-  .confirm-prompt.destructive .confirm-header { color: var(--tier-destructive); }
-  .confirm-action {
-    font-size: 0.88rem;
-    margin-bottom: 0.4rem;
-    padding-left: 0.6rem;
-    border-left: 2px solid currentColor;
-  }
-  .confirm-buttons { display: flex; gap: 0.6rem; margin-top: 0.7rem; }
+  .confirm-prompt .content { border-color: var(--amber); border-left-color: var(--amber); background: rgba(240, 180, 95, .06); }
+  .confirm-prompt.destructive .content { border-color: var(--red); border-left-color: var(--red); background: rgba(224, 106, 106, .06); }
+  .confirm-header { font-family: var(--font-mono); font-size: 9px; letter-spacing: .15em; text-transform: uppercase; margin-bottom: 8px; color: var(--amber); }
+  .confirm-prompt.destructive .confirm-header { color: var(--red); }
+  .confirm-action { font-size: 13px; margin-bottom: 6px; padding-left: 8px; border-left: 2px solid currentColor; }
+  .confirm-buttons { display: flex; gap: 10px; margin-top: 10px; }
   .confirm-buttons button {
-    font-family: inherit;
-    font-size: 0.72rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 0.4rem 1.1rem;
-    cursor: pointer;
-    background: transparent;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    padding: 5px 16px; cursor: pointer; background: transparent;
   }
-  .confirm-approve { border: 1px solid var(--tier-read); color: var(--tier-read); }
-  .confirm-approve:hover:not(:disabled) { background: rgba(61, 220, 151, 0.12); }
-  .confirm-deny { border: 1px solid var(--tier-destructive); color: var(--tier-destructive); }
-  .confirm-deny:hover:not(:disabled) { background: rgba(255, 77, 109, 0.12); }
-  .confirm-buttons button:disabled { opacity: 0.4; cursor: default; }
+  .confirm-approve { border: 1px solid var(--green); color: var(--green); }
+  .confirm-approve:hover:not(:disabled) { background: rgba(99, 240, 168, .12); }
+  .confirm-deny { border: 1px solid var(--red); color: var(--red); }
+  .confirm-deny:hover:not(:disabled) { background: rgba(224, 106, 106, .12); }
+  .confirm-buttons button:disabled { opacity: .4; cursor: default; }
 
-  #wake-status {
-    margin-top: 0.4rem;
-    font-size: 0.62rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--text-dim);
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
+  #typing-indicator { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; color: var(--text-faint); padding: 0 13px 10px; }
+  #typing-indicator .dot { width: 5px; height: 5px; background: var(--cyan); animation: orionBlink 1.2s ease-in-out infinite; }
+
+  #form { flex: none; padding: 12px 13px; border-top: 1px solid var(--border); display: flex; gap: 9px; align-items: center; }
+  #input {
+    flex: 1; border: 1px solid var(--border-strong); background: rgba(4, 12, 16, .9);
+    color: var(--text); padding: 11px 12px; font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; outline: none;
   }
-  #wake-status .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--text-dim);
-    flex: none;
+  #input::placeholder { color: var(--text-faint); }
+  #input:focus { border-color: var(--cyan); }
+  #send {
+    width: 42px; height: 42px; border: 1px solid var(--cyan); background: rgba(79, 214, 232, .14);
+    color: var(--cyan-bright); font-size: 15px; cursor: pointer; flex: none;
   }
-  #wake-status.armed .dot {
-    background: var(--tier-read);
-    box-shadow: 0 0 6px var(--tier-read);
-    animation: pulse 2.5s ease-in-out infinite;
+  #send:hover { background: rgba(79, 214, 232, .24); }
+
+  #wake-status { display: none; }
+
+  /* ---------- Every non-Console tab shares this grid shell ---------- */
+  .tab-view-grid {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; grid-auto-rows: minmax(0, auto);
+    gap: 14px; padding: 16px; min-height: 0; overflow-y: auto;
   }
-  #wake-status.armed { color: var(--tier-read); }
-  #wake-status.triggered .dot {
-    background: var(--tier-sensitive);
-    box-shadow: 0 0 8px var(--tier-sensitive);
-    animation: pulse-fast 0.5s ease-in-out infinite;
+  .tab-view-grid .span-2 { grid-column: span 2; }
+  .tab-view-grid .span-3 { grid-column: span 3; }
+
+  .forecast-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--border); font-family: var(--font-mono); font-size: 11px; }
+  .forecast-row:last-child { border-bottom: none; }
+  .forecast-row .f-date { color: var(--text-dim); width: 90px; flex: none; }
+  .forecast-row .f-cond { flex: 1; color: var(--text-mid); }
+  .forecast-row .f-temps { color: var(--cyan-bright); white-space: nowrap; }
+  .forecast-row .f-precip { color: var(--text-faintest); width: 50px; text-align: right; flex: none; }
+
+  #location-map { border: 1px solid var(--border); filter: saturate(0.6) brightness(0.85) hue-rotate(-8deg); }
+  .location-marker-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px 3px rgba(79,214,232,.7); border: 2px solid var(--cyan-bright); }
+  .location-marker-dest { width: 12px; height: 12px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 10px 3px rgba(240,180,95,.7); border: 2px solid #fff; }
+
+  .notif-row { border: 1px solid var(--border); border-left: 2px solid var(--cyan); padding: 10px 12px; margin-bottom: 8px; }
+  .notif-row:last-child { margin-bottom: 0; }
+  .notif-row.task { border-left-color: var(--amber); }
+  .notif-row .n-head { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--cyan-bright); margin-bottom: 4px; }
+  .notif-row .n-body { font-size: 12px; color: var(--text-dim); }
+
+  .device-row { border: 1px solid var(--border); padding: 10px 12px; margin-bottom: 8px; }
+  .device-row:last-child { margin-bottom: 0; }
+  .device-row .d-head { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--cyan-bright); margin-bottom: 6px; }
+  .device-row .d-stats { display: flex; flex-wrap: wrap; gap: 10px; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+  .device-row .d-stats span.k { color: var(--text-faintest); }
+
+  .core-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 7px; }
+  .core-cell { border: 1px solid var(--border); background: rgba(79, 214, 232, .05); padding: 8px 6px; }
+  .core-cell .k { font-family: var(--font-mono); font-size: 9px; color: var(--text-dimmer); }
+  .core-cell .v { font-family: var(--font-mono); font-size: 14px; color: var(--cyan-bright); margin-top: 3px; }
+  .core-cell .track { height: 2px; background: rgba(79, 214, 232, .18); margin-top: 6px; }
+  .core-cell .track .fill { height: 100%; background: var(--cyan); }
+  .core-cell.hot { border-color: rgba(240, 180, 95, .4); background: rgba(240, 180, 95, .08); }
+  .core-cell.hot .v { color: #f5d4a0; }
+  .core-cell.hot .track .fill { background: var(--amber); }
+
+  .mem-track { display: flex; height: 22px; border: 1px solid var(--border-strong); }
+  .mem-used { background: rgba(79, 214, 232, .55); }
+  .mem-free { flex: 1; background-image: repeating-linear-gradient(45deg, rgba(79, 214, 232, .08) 0 5px, transparent 5px 10px); }
+  .legend-row { display: flex; align-items: center; gap: 9px; font-family: var(--font-mono); font-size: 10px; color: var(--text-mid); }
+  .legend-row .swatch { width: 9px; height: 9px; flex: none; }
+  .legend-row span.flex1 { flex: 1; }
+  .legend-row .v { color: var(--cyan-bright); }
+
+  .two-col-stats { border-top: 1px solid var(--border); padding-top: 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .two-col-stats .k { font-family: var(--font-mono); font-size: 9px; letter-spacing: .12em; color: var(--text-dimmer); }
+  .two-col-stats .v { font-family: var(--font-mono); font-size: 14px; color: var(--cyan-bright); margin-top: 3px; }
+
+  .bus-row { border: 1px solid var(--border-strong); padding: 9px 10px; display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; color: var(--text-mid); }
+  .bus-row.empty { border-color: var(--border); color: var(--text-dimmer); }
+  .bus-row .ok { color: var(--green); }
+
+  .history-chart { flex: 1; padding: 14px; display: flex; align-items: flex-end; gap: 3px; min-height: 120px; }
+  .history-bar-group { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; gap: 1px; }
+  .history-bar-group .b-gpu { background: rgba(240, 180, 95, .45); }
+  .history-bar-group .b-cpu { background: rgba(79, 214, 232, .5); }
+  .history-axis { padding: 0 14px 12px; display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 9px; letter-spacing: .12em; color: var(--text-faintest); }
+
+  .storage-row { display: flex; flex-direction: column; gap: 5px; }
+  .storage-row .line { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+  .storage-row .line .v { color: var(--cyan-bright); }
+  .storage-track { height: 3px; background: rgba(79, 214, 232, .1); }
+  .storage-fill { height: 100%; background: var(--cyan); }
+  .storage-fill.warn { background: var(--amber); }
+
+  .sensor-note { font-size: 12px; line-height: 1.6; color: var(--text-dim); }
+  .gpu-name-line { font-family: var(--font-mono); font-size: 11px; color: var(--cyan-bright); margin-bottom: 2px; }
+  .no-gpu { font-family: var(--font-mono); font-size: 11px; color: var(--text-dimmer); padding: 8px 0; }
+
+  /* ---------- Footer ---------- */
+  #footer {
+    position: relative; z-index: 1; flex: none; display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 20px; border-top: 1px solid var(--border); background: rgba(6, 15, 20, .8);
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: .18em; color: var(--text-faint);
   }
-  #wake-status.triggered { color: var(--tier-sensitive); }
-  #wake-status.error .dot { background: var(--tier-destructive); }
-  #wake-status.error { color: var(--tier-destructive); }
+
+  @media (max-width: 1200px) {
+    #console-view { grid-template-columns: 1fr; overflow-y: auto; }
+    #console-right { min-height: 60vh; }
+    .tab-view-grid { grid-template-columns: 1fr; }
+    .tab-view-grid .span-2, .tab-view-grid .span-3 { grid-column: span 1; }
+  }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>ORION</h1>
-  <div class="subtitle">Omni-Responsive Intelligence &amp; Operations Nexus</div>
-  <div id="wake-status"><span class="dot"></span><span id="wake-status-text">Wake word: off</span></div>
+<header id="topbar">
+  <div class="topbar-left">
+    <div class="brand-mark">
+      <div class="brand-ring"><div class="dot"></div></div>
+      <span class="brand-name">ORION</span>
+    </div>
+    <div id="online-status" class="status-chip"><span class="dot"></span><span class="label" id="online-status-text">CONNECTING</span></div>
+  </div>
+  <div class="topbar-center">
+    <span class="clock" id="clock-time"></span>
+    <span class="sep">│</span>
+    <span class="date" id="clock-date"></span>
+  </div>
+  <div class="topbar-right">
+    <span class="weather-chip" id="topbar-weather-chip" title="Weather — visit the WEATHER tab to grant location access">WEATHER —</span>
+    <button class="icon-btn" type="button" title="Settings (coming soon)">&#8961;</button>
+  </div>
 </header>
 
-<div id="core-wrap" data-state="idle">
-  <div class="core-ring ring-outer"></div>
-  <div class="core-ring ring-mid"></div>
-  <div class="core-ring ring-inner"></div>
-  <div class="particle-orbit" style="--angle: 0deg"><span class="particle"></span></div>
-  <div class="particle-orbit" style="--angle: 45deg"><span class="particle"></span></div>
-  <div class="particle-orbit" style="--angle: 90deg"><span class="particle"></span></div>
-  <div class="particle-orbit" style="--angle: 135deg"><span class="particle"></span></div>
-  <div class="particle-orbit" style="--angle: 180deg"><span class="particle"></span></div>
-  <div class="particle-orbit" style="--angle: 225deg"><span class="particle"></span></div>
-  <div class="particle-orbit" style="--angle: 270deg"><span class="particle"></span></div>
-  <div class="particle-orbit" style="--angle: 315deg"><span class="particle"></span></div>
-  <div id="core"></div>
+<div id="tabbar">
+  <div class="tab active" id="tab-console" data-tab="console">CONSOLE</div>
+  <div class="tab" id="tab-internals" data-tab="internals">INTERNALS</div>
+  <div class="tab" id="tab-network" data-tab="network">NETWORK</div>
+  <div class="tab" id="tab-proactive" data-tab="proactive">PROACTIVE</div>
+  <div class="tab" id="tab-vision" data-tab="vision">VISION</div>
+  <div class="tab" id="tab-computer" data-tab="computer">COMPUTER</div>
+  <div class="tab" id="tab-location" data-tab="location">LOCATION</div>
+  <div class="tab" id="tab-weather" data-tab="weather">WEATHER</div>
+  <div class="tab-spacer" id="stats-live-indicator"><span class="dot"></span><span id="stats-live-text">TELEMETRY: CONNECTING</span></div>
 </div>
 
-<div id="hud">
-  <span class="corner-bl"></span><span class="corner-br"></span>
-  <div id="log"></div>
-  <form id="form">
-    <input id="input" type="text" autocomplete="off" placeholder="Say something..." />
-    <button id="mic" type="button" title="Hold to talk">&#127908;</button>
-    <button id="send" type="submit">Send</button>
-  </form>
+<div id="console-view">
+  <div id="console-left">
+
+    <div class="card">
+      <div class="card-head"><span>CORE TELEMETRY</span><span class="sub">01</span></div>
+      <div class="card-body">
+        <div class="stat-row"><div class="line"><span>PROCESSOR</span><span class="v" id="ct-cpu-val">—</span></div><div class="stat-track"><div class="stat-fill" id="ct-cpu-bar" style="width:0%"></div></div></div>
+        <div class="stat-row"><div class="line"><span>MEMORY</span><span class="v" id="ct-mem-val">—</span></div><div class="stat-track"><div class="stat-fill" id="ct-mem-bar" style="width:0%"></div></div></div>
+        <div class="stat-row"><div class="line"><span>GPU LOAD</span><span class="v" id="ct-gpu-val">—</span></div><div class="stat-track"><div class="stat-fill" id="ct-gpu-bar" style="width:0%;background:var(--amber)"></div></div></div>
+        <div class="mini-grid">
+          <div class="mini-cell"><div class="k">GPU TEMP</div><div class="v" id="ct-temp">—</div></div>
+          <div class="mini-cell"><div class="k">DISK</div><div class="v" id="ct-disk">—</div></div>
+          <div class="mini-cell"><div class="k">LLM PING</div><div class="v" id="ct-net">—</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span>OPTICAL FEED</span><span class="sub" id="optical-feed-badge">OFF</span></div>
+      <div class="card-body">
+        <div id="optical-feed-box">
+          <span class="corner-tl"></span>
+          <span id="optical-feed-text">CAMERA OFF<br>Open the VISION tab to watch or track</span>
+          <span class="corner-br2"></span>
+        </div>
+        <div class="feed-caption"><span id="optical-feed-lens">LENS · NOT CONNECTED</span><span id="optical-feed-tracking">TRACKING: —</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="flex:1">
+      <div class="card-head"><span>SUBSYSTEMS</span><span class="sub" id="subsystems-count">—</span></div>
+      <div id="subsystems-list">
+        <div class="subsys-row"><span>OLLAMA</span><span id="sub-ollama">—</span></div>
+        <div class="subsys-row"><span>MCP SERVERS</span><span id="sub-mcp">—</span></div>
+        <div class="subsys-row"><span>VOICE STT / TTS</span><span id="sub-voice">—</span></div>
+        <div class="subsys-row"><span>WAKE WORD</span><span id="sub-wake">—</span></div>
+      </div>
+      <div id="subsystems-uptime"><span>UPTIME</span><span class="v" id="sub-uptime">—</span></div>
+    </div>
+
+  </div>
+
+  <div id="console-center">
+    <div id="orb-wrap" data-state="idle">
+      <div class="orb-ring orb-ring-outer"></div>
+      <div class="orb-ring orb-ring-dash"></div>
+      <div class="orb-ring orb-ring-solid"></div>
+      <div class="orb-ring orb-ring-pulse"></div>
+      <div class="orb-ring orb-ring-inner"></div>
+      <div id="orb-core">
+        <div class="orb-bar"></div><div class="orb-bar"></div><div class="orb-bar"></div><div class="orb-bar"></div><div class="orb-bar"></div>
+      </div>
+    </div>
+
+    <div class="orb-wordmark-group">
+      <div class="orb-wordmark">ORION</div>
+      <div id="orion-status-chip"><span class="dot"></span><span class="label" id="wake-status-text">Wake word: off</span></div>
+      <div class="wake-phrase-caption">WAKE PHRASE — "ORION"</div>
+    </div>
+
+    <div id="mode-row">
+      <button class="mode-btn" type="button" disabled title="Vision — coming in v1.2">&#128247;</button>
+      <button id="mic" class="mode-btn mic-active" type="button" title="Hold to talk">&#9679;</button>
+      <button id="keyboard-btn" class="mode-btn" type="button" title="Type a message">&#9000;</button>
+    </div>
+  </div>
+
+  <div id="console-right">
+    <div id="hud">
+      <div id="convo-header">
+        <span>DIALOGUE LOG</span>
+        <span class="convo-actions">
+          <button id="clear-btn" class="icon-btn" type="button">CLEAR</button>
+          <button id="extract-btn" class="icon-btn" type="button">EXPORT</button>
+        </span>
+      </div>
+      <div id="log"></div>
+      <div id="typing-indicator"><span class="dot"></span><span id="typing-label">AWAITING DIRECTIVE</span></div>
+      <form id="form">
+        <input id="input" type="text" autocomplete="off" placeholder="Enter directive…" />
+        <button id="send" type="submit">&#9656;</button>
+      </form>
+    </div>
+  </div>
 </div>
+
+<div id="internals-view" class="tab-view-grid" style="display:none">
+
+  <div class="card span-2">
+    <div class="card-head"><span id="proc-die-title">PROCESSOR DIE</span><span class="sub" id="proc-die-freq">—</span></div>
+    <div class="card-body">
+      <div class="core-grid" id="core-grid"></div>
+      <div class="two-col-stats">
+        <div><div class="k">LOGICAL / PHYSICAL</div><div class="v" id="int-core-count">—</div></div>
+        <div><div class="k">OVERALL LOAD</div><div class="v" id="int-cpu-overall">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span>GPU</span><span class="sub" id="gpu-model-sub">—</span></div>
+    <div class="card-body" id="gpu-card-body">
+      <div class="no-gpu">No NVIDIA GPU detected via nvidia-smi.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span>MEMORY MAP</span><span class="sub" id="mem-total-sub">—</span></div>
+    <div class="card-body">
+      <div class="mem-track"><div class="mem-used" id="mem-used-bar" style="width:0%"></div><div class="mem-free"></div></div>
+      <div class="legend-row"><div class="swatch" style="background:rgba(79,214,232,.55)"></div><span class="flex1">used</span><span class="v" id="mem-used-val">—</span></div>
+      <div class="legend-row" style="color:var(--text-dimmer)"><div class="swatch" style="border:1px solid rgba(79,214,232,.25)"></div><span class="flex1">available</span><span id="mem-avail-val">—</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span>STORAGE ARRAY</span><span class="sub ok" style="color:var(--green)">HEALTHY</span></div>
+    <div class="card-body" id="storage-list"></div>
+  </div>
+
+  <div class="card span-3">
+    <div class="card-head"><span>CPU / GPU LOAD · LAST 5 MIN</span>
+      <div style="display:flex;gap:12px;font-family:var(--font-mono);font-size:9px;color:var(--text-dimmer)">
+        <span style="color:var(--cyan)">— CPU</span><span style="color:var(--amber)">— GPU</span>
+      </div>
+    </div>
+    <div class="history-chart" id="history-chart"></div>
+    <div class="history-axis"><span>-5m</span><span>-2.5m</span><span>NOW</span></div>
+  </div>
+
+  <div class="card span-3">
+    <div class="card-head"><span>SENSOR BRIDGE</span><span class="sub" style="color:var(--text-faintest)">NOT CONNECTED</span></div>
+    <div class="card-body">
+      <div class="sensor-note" id="sensor-note">Loading…</div>
+    </div>
+  </div>
+
+</div>
+
+<div id="network-view" class="tab-view-grid" style="display:none">
+
+  <div class="card span-3">
+    <div class="card-head"><span>ORION SERVER — LAN ACCESS</span><span class="sub" id="ws-status-sub">—</span></div>
+    <div class="card-body">
+      <div class="sensor-note">Open this address on your phone's browser (same Wi-Fi network as this PC), then use "Add to Home Screen" to install ORION as a real second client sharing this exact conversation and memory.</div>
+      <div class="gpu-name-line" id="lan-url" style="font-size:16px;user-select:all">—</div>
+    </div>
+  </div>
+
+  <div class="card span-3">
+    <div class="card-head"><span>CONNECTED DEVICES</span><span class="sub" id="device-count">—</span></div>
+    <div class="card-body" id="device-list"><div class="no-gpu">No devices connected.</div></div>
+  </div>
+
+</div>
+
+<div id="proactive-view" class="tab-view-grid" style="display:none">
+
+  <div class="card span-3">
+    <div class="card-head">
+      <span>PROACTIVE MODE</span>
+      <span class="convo-actions">
+        <button id="proactive-toggle-btn" class="icon-btn" type="button">—</button>
+        <button id="notif-permission-btn" class="icon-btn" type="button">ENABLE OS ALERTS</button>
+        <button id="proactive-check-btn" class="icon-btn" type="button">CHECK NOW</button>
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="sensor-note">ORION checks upcoming calendar events (within 20 min) and due/overdue tasks (within 24h) every 2 minutes on its own, without being asked — real checks against real calendar/task tools, not a canned demo. Turn it off here any time.</div>
+    </div>
+  </div>
+
+  <div class="card span-3">
+    <div class="card-head"><span>NOTIFICATION FEED</span><span class="sub" id="notif-count">—</span></div>
+    <div class="card-body" id="notif-list"><div class="no-gpu">Nothing surfaced yet.</div></div>
+  </div>
+
+</div>
+
+<div id="vision-view" class="tab-view-grid" style="display:none">
+
+  <div class="card span-2">
+    <div class="card-head">
+      <span>IMAGE SOURCE</span>
+      <span class="convo-actions">
+        <button id="vision-webcam-btn" class="icon-btn" type="button">WEBCAM</button>
+        <button id="vision-file-btn" class="icon-btn" type="button">CHOOSE FILE</button>
+        <button id="vision-tracking-btn" class="icon-btn" type="button">START LIVE TRACKING</button>
+        <input id="vision-file-input" type="file" accept="image/*" style="display:none">
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="sensor-note">Paste an image (Ctrl+V), choose a file, or capture from your webcam. Sent to a separate small vision model (moondream) — qwen3:8b itself can't see images — and logged into the same Dialogue Log conversation, not a separate vision-only history.</div>
+      <div id="vision-preview-box" style="height:220px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;background:rgba(255,255,255,.02)">
+        <span class="no-gpu" id="vision-preview-placeholder">No image selected.</span>
+        <video id="vision-webcam-video" autoplay playsinline style="display:none;max-width:100%;max-height:100%"></video>
+        <img id="vision-preview-img" style="display:none;max-width:100%;max-height:100%">
+      </div>
+      <canvas id="vision-capture-canvas" style="display:none"></canvas>
+      <div style="display:flex;gap:9px;align-items:center">
+        <input id="vision-question" type="text" autocomplete="off" placeholder="What's wrong with this error?" style="flex:1;border:1px solid var(--border-strong);background:rgba(4,12,16,.9);color:var(--text);padding:9px 11px;font-family:var(--font-mono);font-size:12px">
+        <button id="vision-analyze-btn" class="icon-btn" type="button" style="padding:9px 18px">ANALYZE</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span>VISION MODEL</span><span class="sub">moondream</span></div>
+    <div class="card-body">
+      <div class="sensor-note">A separate, small (~1.2GB resident) vision-capable model, used only for image-description tool calls. qwen3:8b stays the primary model for everything else — this keeps VRAM manageable on an 8GB card while still giving ORION real sight.</div>
+    </div>
+  </div>
+
+  <div class="card span-3">
+    <div class="card-head"><span>LAST ANALYSIS</span><span class="sub" id="vision-status">—</span></div>
+    <div class="card-body"><div class="sensor-note" id="vision-result">Nothing analyzed yet.</div></div>
+  </div>
+
+  <div class="card span-3">
+    <div class="card-head"><span>TRACKING FEED</span><span class="sub" id="vision-tracking-sub">OFF</span></div>
+    <div class="card-body">
+      <div class="sensor-note">While active, the webcam frame is checked every few seconds against the last one actually sent — only meaningfully different frames get analyzed, so a static room doesn't spam this feed or the vision model. ORION can also arm this itself in conversation ("keep an eye on the door"); it'll show ARMED here until you open the webcam to actually start capturing.</div>
+      <div id="vision-tracking-feed" style="max-height:220px;overflow-y:auto"><div class="no-gpu">Nothing tracked yet.</div></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="computer-view" class="tab-view-grid" style="display:none">
+
+  <div class="card span-2">
+    <div class="card-head"><span>REAL MOUSE / KEYBOARD CONTROL</span><span class="sub" id="computer-failsafe-sub">—</span></div>
+    <div class="card-body">
+      <div class="sensor-note">Full remote control of this PC's actual input devices — a materially bigger security surface than anything else ORION does. There are no manual buttons here on purpose: control happens through conversation with ORION ("click the Save button", "type this into the search box") rather than a point-and-click proxy panel, since that would just be a different way to trigger the same real actions without adding any real safety. Every action (move/click/type/press) is DESTRUCTIVE-tier and pauses for your explicit confirmation before it runs — approving a batch runs everything in that batch, so review what's listed before approving. Slamming the mouse into a screen corner aborts mid-action (pyautogui's own failsafe, independent of ORION).</div>
+      <div class="two-col-stats" style="border-top:none;padding-top:0">
+        <div><div class="k">CURSOR POSITION</div><div class="v" id="computer-cursor-pos">—</div></div>
+        <div><div class="k">SCREEN RESOLUTION</div><div class="v" id="computer-screen-size">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span>AVAILABLE TOOLS</span><span class="sub">4</span></div>
+    <div class="card-body" id="computer-tools-list" style="padding:0">
+      <div class="subsys-row"><span>computer_move_mouse</span><span class="s-warn">DESTRUCTIVE</span></div>
+      <div class="subsys-row"><span>computer_click</span><span class="s-warn">DESTRUCTIVE</span></div>
+      <div class="subsys-row"><span>computer_type_text</span><span class="s-warn">DESTRUCTIVE</span></div>
+      <div class="subsys-row"><span>computer_press_key</span><span class="s-warn">DESTRUCTIVE</span></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="location-view" class="tab-view-grid" style="display:none">
+
+  <div class="card span-2">
+    <div class="card-head">
+      <span>MAP</span>
+      <span class="convo-actions">
+        <button id="location-geo-btn" class="icon-btn" type="button">USE MY LOCATION</button>
+      </span>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div id="location-map" style="height:360px;width:100%"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span>DESTINATION</span><span class="sub" id="location-status">—</span></div>
+    <div class="card-body">
+      <div class="sensor-note">Type or speak a destination — this works identically to asking ORION in chat ("map me to the airport"), since every tool here is reachable from ordinary conversation too. Uses the free, keyless OpenStreetMap stack (Nominatim + OSRM), not Google/Apple Maps — no API key needed.</div>
+      <div style="display:flex;gap:9px;align-items:center">
+        <input id="location-dest-input" type="text" autocomplete="off" placeholder="e.g. the nearest airport" style="flex:1;border:1px solid var(--border-strong);background:rgba(4,12,16,.9);color:var(--text);padding:9px 11px;font-family:var(--font-mono);font-size:12px">
+        <button id="location-mic-btn" class="mode-btn" type="button" style="width:38px;height:38px;font-size:14px" title="Hold to speak a destination">&#127908;</button>
+      </div>
+      <div style="display:flex;gap:9px;align-items:center">
+        <select id="location-mode-select" style="flex:1;background:rgba(4,12,16,.9);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;padding:7px">
+          <option value="driving">DRIVING</option>
+          <option value="walking">WALKING</option>
+          <option value="cycling">CYCLING</option>
+        </select>
+        <button id="location-go-btn" class="icon-btn" type="button" style="padding:8px 16px">GET DIRECTIONS</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim)">
+        <input id="location-alternatives-check" type="checkbox">COMPARE ALTERNATE ROUTES
+      </label>
+      <div class="two-col-stats">
+        <div><div class="k">DISTANCE</div><div class="v" id="location-distance">—</div></div>
+        <div><div class="k">ETA</div><div class="v" id="location-eta">—</div></div>
+      </div>
+      <div class="stat-row"><div class="line"><span>TRAFFIC</span><span class="v" id="location-traffic" style="color:var(--text-faintest)">—</span></div></div>
+    </div>
+  </div>
+
+  <div class="card span-2">
+    <div class="card-head"><span>ROUTE OPTIONS</span><span class="sub" id="location-route-count">—</span></div>
+    <div class="card-body" id="location-route-list"><div class="no-gpu">Get directions to see route options here.</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span>TURN-BY-TURN</span><span class="sub" id="location-steps-count">—</span></div>
+    <div class="card-body" id="location-steps-list" style="max-height:280px;overflow-y:auto"><div class="no-gpu">No route yet.</div></div>
+  </div>
+
+</div>
+
+<div id="weather-view" class="tab-view-grid" style="display:none">
+
+  <div class="card span-2">
+    <div class="card-head">
+      <span>CURRENT CONDITIONS</span>
+      <span class="convo-actions"><button id="weather-geo-btn" class="icon-btn" type="button">USE MY LOCATION</button></span>
+    </div>
+    <div class="card-body">
+      <div class="sensor-note" id="weather-status">Grant location access to see real conditions here — same per-device principle as the LOCATION tab: never guessed server-side.</div>
+      <div style="display:flex;align-items:baseline;gap:14px">
+        <span id="weather-temp" style="font-family:var(--font-mono);font-size:42px;color:var(--cyan-bright)">—°</span>
+        <span id="weather-conditions" style="font-family:var(--font-mono);font-size:13px;color:var(--text-dim)">—</span>
+      </div>
+      <div class="mini-grid">
+        <div class="mini-cell"><div class="k">FEELS LIKE</div><div class="v" id="weather-feels-like">—</div></div>
+        <div class="mini-cell"><div class="k">HUMIDITY</div><div class="v" id="weather-humidity">—</div></div>
+        <div class="mini-cell"><div class="k">WIND</div><div class="v" id="weather-wind">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span>SOURCE</span><span class="sub">Open-Meteo</span></div>
+    <div class="card-body">
+      <div class="sensor-note">Free, keyless, global weather data — no API key, no billing account. Location comes from this device's own browser Geolocation, the same as the LOCATION tab.</div>
+    </div>
+  </div>
+
+  <div class="card span-3">
+    <div class="card-head"><span>5-DAY FORECAST</span><span class="sub" id="weather-forecast-sub">—</span></div>
+    <div class="card-body" id="weather-forecast-list"><div class="no-gpu">No forecast yet — use your location above.</div></div>
+  </div>
+
+</div>
+
+<footer id="footer">
+  <span>ORION v1.1 · LOCAL NODE</span>
+  <span id="footer-latency">LATENCY —</span>
+  <span id="footer-operator">OPERATOR —</span>
+</footer>
+
+<!-- Vendored (not CDN) — window.L, for the LOCATION tab's map. -->
+<script src="vendor/leaflet.js"></script>
 
 <!-- Vendored (not CDN) — see WAKE_WORD_SETUP.md. IIFE builds, plain <script> tags,
      no bundler needed: window.PorcupineWeb / window.WebVoiceProcessor. -->
@@ -468,30 +903,96 @@
   const log = document.getElementById("log");
   const form = document.getElementById("form");
   const input = document.getElementById("input");
-  const coreWrap = document.getElementById("core-wrap");
+  const typingLabel = document.getElementById("typing-label");
 
-  // --- ORION core state machine ---
-  // data-state on #core-wrap drives every animation in the CSS above;
-  // this is the one place that sets it, from real signals elsewhere in
-  // this script (recording started, a fetch is in flight, audio is
-  // actually playing) — never a decorative frontend-only state.
+  // --- Tabs (real client state, no fake data behind any of them) ---
+  // Data-driven registry rather than one hardcoded branch per tab —
+  // this stopped scaling cleanly around the 6th/7th tab. onEnter only
+  // runs real work (a poll, a lazy map/init) for the tab actually shown.
+  const TAB_NAMES = ["console", "internals", "network", "proactive", "vision", "computer", "location", "weather"];
+  const tabViews = {};
+  const tabButtons = {};
+  for (const name of TAB_NAMES) {
+    tabViews[name] = document.getElementById(name + "-view");
+    tabButtons[name] = document.getElementById("tab-" + name);
+  }
+  const TAB_ON_ENTER = {
+    internals: () => pollSystemStats(),
+    network: () => pollNetworkView(),
+    proactive: () => pollProactiveView(),
+    vision: () => pollVisionTrackingView(),
+    computer: () => pollComputerStatus(),
+    location: () => initLocationMap(),
+    weather: () => pollWeatherView(),
+  };
+  let activeTab = "console";
+
+  function setTab(name) {
+    if (activeTab === "vision" && name !== "vision") {
+      stopVisionWebcam();
+      stopVisionTrackingLoop(); // camera's about to close — tracking can't keep capturing without it
+    }
+    activeTab = name;
+    for (const n of TAB_NAMES) {
+      tabButtons[n].classList.toggle("active", n === name);
+      tabViews[n].style.display = n === name ? "grid" : "none";
+    }
+    if (TAB_ON_ENTER[name]) TAB_ON_ENTER[name]();
+  }
+  for (const name of TAB_NAMES) {
+    tabButtons[name].addEventListener("click", () => setTab(name));
+  }
+
+  // --- ORION orb: CSS rings + an EQ-bar core. Ring motion is decorative
+  // (there's no real signal to drive idle/thinking motion), but the bar
+  // heights during LISTENING/SPEAKING are set every frame from real Web
+  // Audio amplitude below — never faked for those two states.
+  const orbWrap = document.getElementById("orb-wrap");
+  const orbBars = Array.from(document.querySelectorAll("#orb-core .orb-bar"));
+  const BAR_WEIGHTS = [0.55, 0.8, 1.0, 0.8, 0.55];
+
   const EMOTION_COLORS = {
-    neutral: "#4df3ff",
-    confident: "#3ddc97",
-    concerned: "#ff9f43",
-    serious: "#ff4d6d",
+    neutral: "#4fd6e8",
+    confident: "#63f0a8",
+    concerned: "#f0b45f",
+    serious: "#e06a6a",
   };
 
   function setOrionState(state, emotion) {
-    coreWrap.dataset.state = state;
-    coreWrap.style.setProperty("--emotion-color", EMOTION_COLORS[emotion] || EMOTION_COLORS.neutral);
+    orbWrap.dataset.state = state;
+    orbWrap.style.setProperty("--emotion-color", EMOTION_COLORS[emotion] || EMOTION_COLORS.neutral);
     mic.classList.toggle("recording", state === "listening");
+    if (state !== "listening" && state !== "speaking") {
+      orbBars.forEach((bar) => { bar.style.height = ""; });
+    }
+    const labels = {
+      idle: "AWAITING DIRECTIVE",
+      listening: "LISTENING…",
+      thinking: "ORION IS COMPOSING…",
+      speaking: "ORION IS SPEAKING…",
+      tool_use: "EXECUTING TOOL…",
+      confirmation: "AWAITING YOUR CONFIRMATION",
+      error: "SOMETHING WENT WRONG",
+      connecting: "RECONNECTING…",
+      offline: "SERVER UNREACHABLE",
+    };
+    typingLabel.textContent = labels[state] || labels.idle;
   }
 
-  // Shared by the listening-amplitude (mic input) and speaking-amplitude
-  // (reply audio output) visualizations — samples RMS from a Web Audio
-  // analyser once per frame and writes it to --amplitude, which the CSS
-  // above reads directly. Real audio-reactive visuals, not a canned pulse.
+  let targetAmplitude = 0;
+  let smoothAmplitude = 0;
+  let amplitudeRafId = null;
+  function amplitudeTick() {
+    smoothAmplitude += (targetAmplitude - smoothAmplitude) * 0.25;
+    if (orbWrap.dataset.state === "listening" || orbWrap.dataset.state === "speaking") {
+      orbBars.forEach((bar, i) => {
+        bar.style.height = (6 + smoothAmplitude * 34 * BAR_WEIGHTS[i]) + "px";
+      });
+    }
+    amplitudeRafId = requestAnimationFrame(amplitudeTick);
+  }
+  amplitudeTick();
+
   function startAmplitudeLoop(analyser) {
     const buf = new Float32Array(analyser.fftSize);
     let rafId;
@@ -500,13 +1001,13 @@
       let sumSquares = 0;
       for (let i = 0; i < buf.length; i++) sumSquares += buf[i] * buf[i];
       const rms = Math.sqrt(sumSquares / buf.length);
-      coreWrap.style.setProperty("--amplitude", Math.min(1, rms * 6).toFixed(3));
+      targetAmplitude = Math.min(1, rms * 6);
       rafId = requestAnimationFrame(tick);
     };
     tick();
     return () => {
       cancelAnimationFrame(rafId);
-      coreWrap.style.setProperty("--amplitude", "0");
+      targetAmplitude = 0;
     };
   }
 
@@ -514,15 +1015,12 @@
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  // Small hand-rolled markdown renderer rather than a vendored library —
-  // the model only ever produces a modest subset (bold/italic/headers/
-  // lists/code/links), so a regex pass covers it without pulling in a
-  // full CommonMark implementation. HTML-escape happens first so any
-  // literal '<'/'>' in the model's own text can't turn into real tags —
-  // only the markdown syntax this function explicitly recognizes does.
+  // Small hand-rolled markdown renderer — the model only ever produces a
+  // modest subset (bold/italic/headers/lists/code/links). HTML-escape
+  // happens first so literal '<'/'>' in the model's text can't become
+  // real tags — only markdown syntax this function recognizes does.
   function renderMarkdown(text) {
     let html = escapeHtml(text);
-
     html = html.replace(/```([\s\S]*?)```/g, (_, code) => "<pre><code>" + code.trim() + "</code></pre>");
     html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
     html = html.replace(/^### (.*)$/gm, "<h3>$1</h3>");
@@ -531,11 +1029,6 @@
     html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     html = html.replace(/(?<!\w)\*([^*\n]+)\*(?!\w)/g, "<em>$1</em>");
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-
-    // Consecutive "- " / "1. " lines become a single <ul>/<ol>.
-    // Leading whitespace tolerated (sub-bullets) but flattened into one
-    // list level rather than properly nested — full nested-list structure
-    // isn't worth the complexity for what this needs to convey.
     html = html.replace(/(^|\n)((?:[ \t]*[-*] .*(?:\n|$))+)/g, (_, prefix, block) => {
       const items = block.trim().split("\n").map((l) => "<li>" + l.replace(/^[ \t]*[-*]\s+/, "") + "</li>").join("");
       return prefix + "<ul>" + items + "</ul>";
@@ -544,8 +1037,6 @@
       const items = block.trim().split("\n").map((l) => "<li>" + l.replace(/^[ \t]*\d+\.\s+/, "") + "</li>").join("");
       return prefix + "<ol>" + items + "</ol>";
     });
-
-    // Remaining bare lines become paragraphs; skip blocks already tagged above.
     html = html
       .split(/\n{2,}/)
       .map((block) => {
@@ -555,7 +1046,6 @@
         return "<p>" + t.replace(/\n/g, "<br>") + "</p>";
       })
       .join("");
-
     return html;
   }
 
@@ -564,7 +1054,7 @@
     div.className = "msg " + role;
     const roleLabel = document.createElement("span");
     roleLabel.className = "role";
-    roleLabel.textContent = role;
+    roleLabel.textContent = role.toUpperCase() + " · " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const content = document.createElement("span");
     content.className = "content";
     content.innerHTML = renderMarkdown(text);
@@ -575,20 +1065,14 @@
     return div;
   }
 
-  // Contextual HUD: group tool activity by the service it belongs to
-  // (ORION > GMAIL > gmail_search [READ]) rather than a flat list — this
-  // is what the spec's "reveal information dynamically based on context"
-  // actually means for the one signal we have it for. It only appears
-  // after a response arrives (the full tool_calls list, all at once);
-  // showing which *specific* tool is running live, mid-request, would
-  // need a streaming/WebSocket architecture this app doesn't have.
   function serviceForTool(name) {
     if (name.startsWith("calendar_")) return "CALENDAR";
+    if (name.startsWith("icloud_calendar_")) return "ICLOUD CALENDAR";
     if (name.startsWith("gmail_")) return "GMAIL";
     if (name.startsWith("task_")) return "TASKS";
     if (name.startsWith("web_")) return "WEB";
     if (name === "list_files" || name === "read_file") return "FILESYSTEM";
-    return "CODING"; // code_*, write_file, edit_file, search_code, run_command, run_tests, git_*
+    return "CODING";
   }
 
   function appendToolLog(container, toolCalls) {
@@ -599,7 +1083,6 @@
       if (!groups.has(service)) groups.set(service, []);
       groups.get(service).push(call);
     }
-
     const wrap = document.createElement("div");
     wrap.className = "tool-log";
     for (const [service, calls] of groups) {
@@ -623,24 +1106,23 @@
     container.appendChild(wrap);
   }
 
-  // Renders a pending_confirmation as an inline approve/deny prompt using
-  // the same tier colors as the tool-call log — PHASE4.md: amber for
-  // SENSITIVE, red for DESTRUCTIVE, plain-language consequence per action.
   function renderPendingConfirmation(data) {
     const hasDestructive = data.pending_actions.some((a) => a.tier === "DESTRUCTIVE");
     const div = document.createElement("div");
-    div.className = "msg confirm-prompt" + (hasDestructive ? " destructive" : "");
+    div.className = "msg assistant confirm-prompt" + (hasDestructive ? " destructive" : "");
+    const content = document.createElement("div");
+    content.className = "content";
 
     const header = document.createElement("div");
     header.className = "confirm-header";
     header.textContent = hasDestructive ? "Confirmation required — destructive" : "Confirmation required";
-    div.appendChild(header);
+    content.appendChild(header);
 
     for (const action of data.pending_actions) {
       const line = document.createElement("div");
       line.className = "confirm-action tier-" + action.tier;
       line.textContent = "[" + action.tier + "] " + action.description;
-      div.appendChild(line);
+      content.appendChild(line);
     }
 
     const buttons = document.createElement("div");
@@ -653,7 +1135,8 @@
     denyBtn.textContent = "Deny";
     buttons.appendChild(approveBtn);
     buttons.appendChild(denyBtn);
-    div.appendChild(buttons);
+    content.appendChild(buttons);
+    div.appendChild(content);
 
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
@@ -676,24 +1159,17 @@
       } catch (err) {
         thinking.remove();
         appendMessage("error", "Confirmation failed: " + err.message);
-        setOrionState("idle");
+        setOrionState("error", "concerned");
       }
     };
-
     approveBtn.addEventListener("click", () => resolve(true));
     denyBtn.addEventListener("click", () => resolve(false));
   }
 
-  // Plays a reply's synthesized audio with a real Web Audio analyser
-  // driving the SPEAKING state's --amplitude — falls back to plain
-  // playback with no visual reactivity if the analyser wiring fails
-  // (autoplay/permission quirks vary by browser and can't be tested
-  // from here), since actual playback is what matters functionally.
   let audioCtx = null;
   function playReplyAudio(base64Audio, emotion) {
     const audio = new Audio("data:audio/wav;base64," + base64Audio);
     currentAudio = audio;
-
     audio.addEventListener("play", () => {
       setOrionState("speaking", emotion);
       try {
@@ -704,36 +1180,22 @@
         source.connect(analyser);
         analyser.connect(audioCtx.destination);
         stopAmplitudeLoop = startAmplitudeLoop(analyser);
-      } catch (err) {
-        // Audio still plays via the plain element above — just without
-        // amplitude-reactive visuals.
-      }
+      } catch (err) { /* still plays, just without amplitude-reactive bars */ }
     });
-
     const onEnd = () => {
       if (stopAmplitudeLoop) { stopAmplitudeLoop(); stopAmplitudeLoop = null; }
-      if (currentAudio === audio) {
-        currentAudio = null;
-        setOrionState("idle", emotion);
-      }
+      if (currentAudio === audio) { currentAudio = null; setOrionState("idle", emotion); }
     };
     audio.addEventListener("ended", onEnd);
     audio.addEventListener("pause", onEnd);
-
     audio.play().catch(() => {});
   }
 
-  // Shared by text chat, voice, and the confirm buttons — a response is
-  // either a normal reply or another pending_confirmation (a later round
-  // in the same turn can need its own approval), so every entry point
-  // needs to handle both, not just the first one.
   async function renderChatResult(data, opts = {}) {
     conversationId = data.conversation_id;
     if (data.status === "pending_confirmation") {
       renderPendingConfirmation(data);
-      // Idle, but tinted by emotion (serious/concerned) so the core
-      // visually reflects the pending action while awaiting the human.
-      setOrionState("idle", data.emotion);
+      setOrionState("confirmation", data.emotion);
       return;
     }
     const assistantDiv = appendMessage("assistant", data.reply);
@@ -752,28 +1214,1040 @@
     if (!message) return;
     input.value = "";
     appendMessage("user", message);
-
     const thinking = appendMessage("assistant", "...");
     setOrionState("thinking");
-
     try {
       const response = await fetch("/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message, conversation_id: conversationId }),
       });
-      if (!response.ok) {
-        throw new Error("HTTP " + response.status);
-      }
+      if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
       thinking.remove();
       await renderChatResult(data);
     } catch (err) {
       thinking.remove();
       appendMessage("error", "Failed to get a reply: " + err.message);
-      setOrionState("idle");
+      setOrionState("error", "concerned");
     }
   });
+
+  document.getElementById("keyboard-btn").addEventListener("click", () => input.focus());
+
+  document.getElementById("clear-btn").addEventListener("click", () => {
+    if (!confirm("Start a new conversation? The current one stays saved on disk, just no longer shown here.")) return;
+    log.innerHTML = "";
+    conversationId = null;
+  });
+
+  document.getElementById("extract-btn").addEventListener("click", () => {
+    const messages = Array.from(log.querySelectorAll(".msg"));
+    if (messages.length === 0) return;
+    const lines = messages.map((div) => {
+      const roleEl = div.querySelector(".role");
+      const contentEl = div.querySelector(".content");
+      if (roleEl && contentEl) {
+        return "[" + roleEl.textContent.trim().toUpperCase() + "]\n" + contentEl.textContent.trim() + "\n";
+      }
+      return "[SYSTEM]\n" + div.textContent.trim() + "\n";
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "orion-conversation-" + Date.now() + ".txt";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  // --- Top bar chrome: live clock + real backend health poll ---
+  function tickClock() {
+    const now = new Date();
+    document.getElementById("clock-time").textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }).toUpperCase();
+    document.getElementById("clock-date").textContent = now.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" });
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  async function pollHealth() {
+    const chip = document.getElementById("online-status");
+    const text = document.getElementById("online-status-text");
+    try {
+      const res = await fetch("/health");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      chip.className = "status-chip online";
+      text.textContent = "ONLINE";
+      // Only recover the orb out of OFFLINE here — never stomp on a real
+      // in-progress state (listening/thinking/speaking/etc.) just because
+      // a routine health poll happened to succeed.
+      if (orbWrap.dataset.state === "offline") setOrionState("idle");
+    } catch (err) {
+      chip.className = "status-chip offline";
+      text.textContent = "OFFLINE";
+      setOrionState("offline");
+    }
+  }
+  pollHealth();
+  setInterval(pollHealth, 15000);
+
+  // The CONSOLE tab's OPTICAL FEED card used to be a static "arrives in
+  // v1.2" placeholder from before vision existed at all — now that
+  // mcp_servers/vision/server.py and active tracking (Stage 14) are real,
+  // this shows real state instead: whether tracking is currently on
+  // anywhere, and the most recent thing it actually saw. Runs regardless
+  // of which tab is active, same as the clock/health polls above.
+  async function pollOpticalFeedCard() {
+    try {
+      const [state, log] = await Promise.all([
+        (await fetch("/vision/tracking_state")).json(),
+        (await fetch("/vision/tracking_log")).json(),
+      ]);
+      document.getElementById("optical-feed-badge").textContent = state.enabled ? "LIVE" : "OFF";
+      document.getElementById("optical-feed-lens").textContent = "LENS · " + (state.enabled ? "TRACKING" : "NOT CONNECTED");
+      const latest = log.events[0];
+      document.getElementById("optical-feed-tracking").textContent = "TRACKING: " + (latest ? fmtNotifTime(latest.created_at) : "—");
+      document.getElementById("optical-feed-text").innerHTML = state.enabled
+        ? (latest ? latest.description.slice(0, 90) : "Watching — no analyzed frame yet")
+        : "CAMERA OFF<br>Open the VISION tab to watch or track";
+    } catch (err) { /* leave last-known card state on screen */ }
+  }
+  pollOpticalFeedCard();
+  setInterval(pollOpticalFeedCard, 5000);
+
+  // --- Real hardware telemetry: CORE TELEMETRY (Console) + INTERNALS ---
+  function fmtHMS(totalSeconds) {
+    const s = Math.floor(totalSeconds);
+    const h = String(Math.floor(s / 3600)).padStart(2, "0");
+    const m = String(Math.floor(s / 60) % 60).padStart(2, "0");
+    const sec = String(s % 60).padStart(2, "0");
+    return h + ":" + m + ":" + sec;
+  }
+
+  function renderCoreTelemetry(stats) {
+    document.getElementById("ct-cpu-val").textContent = stats.cpu.overall_percent.toFixed(0) + "%";
+    document.getElementById("ct-cpu-bar").style.width = stats.cpu.overall_percent + "%";
+    document.getElementById("ct-mem-val").textContent = stats.memory.percent.toFixed(0) + "%";
+    document.getElementById("ct-mem-bar").style.width = stats.memory.percent + "%";
+    if (stats.gpu) {
+      document.getElementById("ct-gpu-val").textContent = stats.gpu.utilization_percent.toFixed(0) + "%";
+      document.getElementById("ct-gpu-bar").style.width = stats.gpu.utilization_percent + "%";
+      document.getElementById("ct-temp").textContent = stats.gpu.temperature_c.toFixed(0) + "°C";
+    } else {
+      document.getElementById("ct-gpu-val").textContent = "N/A";
+      document.getElementById("ct-gpu-bar").style.width = "0%";
+      document.getElementById("ct-temp").textContent = "N/A";
+    }
+    const primaryDisk = stats.disks[0];
+    document.getElementById("ct-disk").textContent = primaryDisk ? primaryDisk.percent.toFixed(0) + "%" : "N/A";
+    document.getElementById("ct-net").textContent = stats.network.ollama_latency_ms != null ? stats.network.ollama_latency_ms.toFixed(0) + "ms" : "OFFLINE";
+
+    document.getElementById("subsystems-count").textContent = String(stats.subsystems.mcp_servers_connected).padStart(2, "0");
+    document.getElementById("sub-ollama").innerHTML = stats.network.ollama_latency_ms != null
+      ? '<span class="s-ok">ONLINE</span>' : '<span class="s-off">OFFLINE</span>';
+    document.getElementById("sub-mcp").innerHTML = '<span class="s-ok">' + stats.subsystems.mcp_servers_connected + ' CONNECTED</span>';
+    document.getElementById("sub-voice").innerHTML = '<span class="s-ok">LOADED</span>';
+    document.getElementById("sub-uptime").textContent = fmtHMS(stats.uptime_seconds);
+
+    document.getElementById("footer-latency").textContent = "LATENCY " + (stats.network.ollama_latency_ms != null ? stats.network.ollama_latency_ms.toFixed(0) + "ms" : "—");
+    document.getElementById("footer-operator").textContent = "OPERATOR: " + (stats.operator || "—").toUpperCase();
+  }
+
+  function renderInternals(stats) {
+    const grid = document.getElementById("core-grid");
+    grid.innerHTML = "";
+    stats.cpu.per_core_percent.forEach((pct, i) => {
+      const cell = document.createElement("div");
+      cell.className = "core-cell" + (pct >= 85 ? " hot" : "");
+      cell.innerHTML =
+        '<div class="k">C' + i + '</div><div class="v">' + pct.toFixed(0) + '%</div>' +
+        '<div class="track"><div class="fill" style="width:' + pct + '%"></div></div>';
+      grid.appendChild(cell);
+    });
+    document.getElementById("proc-die-freq").textContent = stats.cpu.logical_cores + " LOGICAL";
+    document.getElementById("int-core-count").textContent = stats.cpu.logical_cores + " / " + stats.cpu.physical_cores;
+    document.getElementById("int-cpu-overall").textContent = stats.cpu.overall_percent.toFixed(0) + "%";
+
+    const gpuBody = document.getElementById("gpu-card-body");
+    const gpuSub = document.getElementById("gpu-model-sub");
+    if (stats.gpu) {
+      gpuSub.textContent = stats.gpu.vram_total_mb.toFixed(0) + " MB VRAM";
+      gpuBody.innerHTML =
+        '<div class="gpu-name-line">' + stats.gpu.name + '</div>' +
+        '<div class="stat-row"><div class="line"><span>UTILIZATION</span><span class="v">' + stats.gpu.utilization_percent.toFixed(0) + '%</span></div>' +
+        '<div class="stat-track"><div class="stat-fill" style="width:' + stats.gpu.utilization_percent + '%;background:var(--amber)"></div></div></div>' +
+        '<div class="stat-row"><div class="line"><span>VRAM</span><span class="v">' + stats.gpu.vram_used_mb.toFixed(0) + ' / ' + stats.gpu.vram_total_mb.toFixed(0) + ' MB</span></div>' +
+        '<div class="stat-track"><div class="stat-fill" style="width:' + (stats.gpu.vram_used_mb / stats.gpu.vram_total_mb * 100) + '%"></div></div></div>' +
+        '<div class="two-col-stats"><div><div class="k">TEMPERATURE</div><div class="v">' + stats.gpu.temperature_c.toFixed(0) + '°C</div></div>' +
+        '<div><div class="k">POWER DRAW</div><div class="v">' + stats.gpu.power_draw_w.toFixed(1) + ' W</div></div></div>';
+    } else {
+      gpuSub.textContent = "—";
+      gpuBody.innerHTML = '<div class="no-gpu">No NVIDIA GPU detected via nvidia-smi.</div>';
+    }
+
+    document.getElementById("mem-total-sub").textContent = stats.memory.total_gb.toFixed(0) + " GB";
+    document.getElementById("mem-used-bar").style.width = stats.memory.percent + "%";
+    document.getElementById("mem-used-val").textContent = stats.memory.used_gb.toFixed(1) + " GB";
+    document.getElementById("mem-avail-val").textContent = stats.memory.available_gb.toFixed(1) + " GB";
+
+    const storageList = document.getElementById("storage-list");
+    storageList.innerHTML = "";
+    for (const disk of stats.disks) {
+      const row = document.createElement("div");
+      row.className = "storage-row";
+      row.innerHTML =
+        '<div class="line"><span>' + disk.device + '</span><span class="v">' + disk.used_gb.toFixed(0) + ' / ' + disk.total_gb.toFixed(0) + ' GB</span></div>' +
+        '<div class="storage-track"><div class="storage-fill' + (disk.percent >= 85 ? ' warn' : '') + '" style="width:' + disk.percent + '%"></div></div>';
+      storageList.appendChild(row);
+    }
+    const ioRow = document.createElement("div");
+    ioRow.className = "two-col-stats";
+    ioRow.innerHTML =
+      '<div><div class="k">READ</div><div class="v">' + stats.disk_io.read_mb_s.toFixed(2) + ' MB/s</div></div>' +
+      '<div><div class="k">WRITE</div><div class="v">' + stats.disk_io.write_mb_s.toFixed(2) + ' MB/s</div></div>';
+    storageList.appendChild(ioRow);
+
+    const chart = document.getElementById("history-chart");
+    chart.innerHTML = "";
+    for (const sample of stats.history) {
+      const group = document.createElement("div");
+      group.className = "history-bar-group";
+      const gpuH = sample.gpu_percent != null ? sample.gpu_percent : 0;
+      group.innerHTML =
+        '<div class="b-gpu" style="height:' + gpuH + '%"></div>' +
+        '<div class="b-cpu" style="height:' + sample.cpu_percent + '%"></div>';
+      chart.appendChild(group);
+    }
+
+    document.getElementById("sensor-note").textContent = stats.sensor_limitations;
+  }
+
+  let statsPollTimer = null;
+  async function pollSystemStats() {
+    const indicator = document.getElementById("stats-live-indicator");
+    const indicatorText = document.getElementById("stats-live-text");
+    try {
+      const res = await fetch("/system/stats");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const stats = await res.json();
+      indicator.className = "tab-spacer live";
+      indicatorText.textContent = "TELEMETRY: LIVE";
+      renderCoreTelemetry(stats);
+      if (activeTab === "internals") renderInternals(stats);
+    } catch (err) {
+      indicator.className = "tab-spacer";
+      indicatorText.textContent = "TELEMETRY: UNAVAILABLE";
+    }
+  }
+  pollSystemStats();
+  setInterval(pollSystemStats, 3000);
+
+  // --- NETWORK: this device's real WebSocket connection + self-reported
+  // stats. Every number gathered here is something *this specific browser*
+  // actually exposes — a phone has no GPU to poll the way the server's own
+  // INTERNALS tab does, so it reports its own real signals instead (battery,
+  // connection type, device memory, geolocation-if-already-granted) rather
+  // than borrowing the host machine's numbers. ---
+  function getDeviceId() {
+    let id = localStorage.getItem("orion-device-id");
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : "dev-" + Date.now() + "-" + Math.random().toString(16).slice(2));
+      localStorage.setItem("orion-device-id", id);
+    }
+    return id;
+  }
+  function getDeviceLabel() {
+    const standalone = window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+    const mobile = /Mobi|Android|iPhone|iPad/.test(navigator.userAgent);
+    if (standalone) return mobile ? "phone (installed)" : "desktop (installed)";
+    return mobile ? "phone (browser)" : "web";
+  }
+
+  let ws = null;
+  let wsReconnectTimer = null;
+  function connectWebSocket() {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const url = proto + "//" + location.host + "/ws?device_id=" + encodeURIComponent(getDeviceId()) + "&label=" + encodeURIComponent(getDeviceLabel());
+    ws = new WebSocket(url);
+    const IDLE_ISH_STATES = ["idle", "connecting", "offline"];
+    ws.addEventListener("open", () => {
+      document.getElementById("ws-status-sub").textContent = "CONNECTED";
+      sendDeviceStats();
+      // Only recover out of CONNECTING here — a WS drop doesn't necessarily
+      // mean an active /chat HTTP request (a separate connection) has failed.
+      if (orbWrap.dataset.state === "connecting") setOrionState("idle");
+    });
+    ws.addEventListener("close", () => {
+      document.getElementById("ws-status-sub").textContent = "RECONNECTING";
+      // Real reconnection, not a dead client — the spec's "server must
+      // handle client disconnects gracefully" cuts both ways: the client
+      // should recover from a server restart too.
+      if (IDLE_ISH_STATES.includes(orbWrap.dataset.state)) setOrionState("connecting");
+      clearTimeout(wsReconnectTimer);
+      wsReconnectTimer = setTimeout(connectWebSocket, 3000);
+    });
+    ws.addEventListener("error", () => ws.close());
+    ws.addEventListener("message", (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "hello") { /* device_id already known client-side */ }
+        if (msg.type === "notification") handleIncomingNotification(msg);
+        // v1.2 Stage 9: a real, live TOOL_USE signal — orchestrator.py
+        // broadcasts this the instant a tool call actually starts, over
+        // this same WebSocket. Only meaningful while a turn is actually
+        // in flight (thinking/tool_use), so a stray late message can't
+        // hijack an otherwise-idle orb.
+        if (msg.type === "tool_use" && (orbWrap.dataset.state === "thinking" || orbWrap.dataset.state === "tool_use")) {
+          setOrionState("tool_use");
+        }
+        // v1.2 Stage 14: active vision tracking can be armed from any
+        // client (voice/chat calling vision_start_tracking, or another
+        // tab's own toggle) — sync the VISION tab's toggle everywhere,
+        // but never auto-open a camera from a background message (see
+        // syncVisionTrackingUI's own comment for why).
+        if (msg.type === "vision_tracking_state") syncVisionTrackingUI(msg);
+        if (msg.type === "vision_tracking_event") renderVisionTrackingEvent(msg);
+      } catch (err) { /* ignore malformed frames */ }
+    });
+  }
+
+  async function sendDeviceStats() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const stats = {};
+    try {
+      if (navigator.getBattery) {
+        const battery = await navigator.getBattery();
+        stats.battery_percent = Math.round(battery.level * 100);
+        stats.charging = battery.charging;
+      }
+    } catch (err) { /* Battery Status API not available in this browser */ }
+    if (navigator.connection && navigator.connection.effectiveType) {
+      stats.connection_type = navigator.connection.effectiveType;
+    }
+    if (navigator.deviceMemory) {
+      stats.device_memory_gb = navigator.deviceMemory;
+    }
+    // Only ever report location if permission was already granted
+    // elsewhere (the LOCATION tab) — never prompt from here.
+    try {
+      if (navigator.permissions && navigator.geolocation) {
+        const status = await navigator.permissions.query({ name: "geolocation" });
+        if (status.state === "granted") {
+          await new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => { stats.lat = pos.coords.latitude; stats.lon = pos.coords.longitude; resolve(); },
+              () => resolve(),
+              { timeout: 2000 }
+            );
+          });
+        }
+      }
+    } catch (err) { /* permissions API unsupported — skip location silently */ }
+    ws.send(JSON.stringify({ type: "stats", stats }));
+  }
+
+  connectWebSocket();
+  setInterval(sendDeviceStats, 20000);
+
+  function renderDeviceRow(device) {
+    const s = device.stats || {};
+    const parts = [];
+    if (s.battery_percent != null) parts.push('<span class="k">BATTERY</span> ' + s.battery_percent + '%' + (s.charging ? ' (charging)' : ''));
+    if (s.connection_type) parts.push('<span class="k">NETWORK</span> ' + s.connection_type.toUpperCase());
+    if (s.device_memory_gb != null) parts.push('<span class="k">MEMORY</span> ' + s.device_memory_gb + ' GB');
+    if (s.lat != null) parts.push('<span class="k">LOCATION</span> ' + s.lat.toFixed(3) + ', ' + s.lon.toFixed(3));
+    const statsHtml = parts.length ? parts.join(" &nbsp; ") : '<span class="k">no self-reported stats yet</span>';
+    return (
+      '<div class="device-row"><div class="d-head"><span>' + device.label.toUpperCase() + '</span>' +
+      '<span>CONNECTED ' + fmtHMS(device.connected_seconds) + '</span></div>' +
+      '<div class="d-stats">' + statsHtml + '</div></div>'
+    );
+  }
+
+  async function pollNetworkView() {
+    try {
+      const info = await (await fetch("/network/info")).json();
+      document.getElementById("lan-url").textContent = info.lan_url;
+    } catch (err) {
+      document.getElementById("lan-url").textContent = "unavailable";
+    }
+    try {
+      const data = await (await fetch("/network/devices")).json();
+      const devices = data.devices || [];
+      document.getElementById("device-count").textContent = String(devices.length).padStart(2, "0");
+      const list = document.getElementById("device-list");
+      list.innerHTML = devices.length
+        ? devices.map(renderDeviceRow).join("")
+        : '<div class="no-gpu">No devices connected.</div>';
+    } catch (err) { /* leave last-known list on screen rather than clearing it */ }
+  }
+  setInterval(() => { if (activeTab === "network") pollNetworkView(); }, 5000);
+
+  // --- PWA: installable on a phone's home screen, real service worker ---
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => { /* fine without it — just no home-screen install */ });
+    });
+  }
+
+  // --- PROACTIVE: real background checks (core/proactive.py), pushed live
+  // over the same WebSocket the NETWORK tab uses. Nothing here is a canned
+  // demo notification — every entry in the feed came from an actual
+  // calendar/task tool call the scheduler made on its own. ---
+  function fmtNotifTime(unixSeconds) {
+    return new Date(unixSeconds * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function renderNotificationRow(n) {
+    return (
+      '<div class="notif-row ' + (n.category === "task" ? "task" : "") + '">' +
+      '<div class="n-head"><span>' + n.title + '</span><span>' + fmtNotifTime(n.created_at) + '</span></div>' +
+      '<div class="n-body">' + (n.body || "") + '</div></div>'
+    );
+  }
+
+  function handleIncomingNotification(n) {
+    const list = document.getElementById("notif-list");
+    if (list && activeTab === "proactive") {
+      if (list.querySelector(".no-gpu")) list.innerHTML = "";
+      list.insertAdjacentHTML("afterbegin", renderNotificationRow(n));
+    }
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      try { new Notification(n.title, { body: n.body }); } catch (err) { /* some browsers restrict this outside a user gesture */ }
+    }
+    // v1.2 Stage 10 — voice-first: speak proactive notifications aloud
+    // when the user is actually in a voice-active session, rather than
+    // only ever a silent toast. "Voice-active" ties to the real,
+    // existing wake-word-armed signal — not guessed, not always-on.
+    if (wakeArmed) speakNotification(n);
+  }
+
+  async function speakNotification(n) {
+    try {
+      const emotion = n.category === "task" ? "concerned" : "neutral";
+      const res = await fetch("/voice/synthesize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: n.title + ". " + (n.body || ""), emotion }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      playReplyAudio(data.audio_base64, emotion);
+    } catch (err) { /* voice announcement is a nice-to-have — the visual toast above already fired */ }
+  }
+
+  async function pollProactiveView() {
+    try {
+      const data = await (await fetch("/proactive/notifications")).json();
+      const btn = document.getElementById("proactive-toggle-btn");
+      btn.textContent = data.enabled ? "ON — CLICK TO DISABLE" : "OFF — CLICK TO ENABLE";
+      document.getElementById("notif-count").textContent = String(data.notifications.length).padStart(2, "0");
+      const list = document.getElementById("notif-list");
+      list.innerHTML = data.notifications.length
+        ? data.notifications.map(renderNotificationRow).join("")
+        : '<div class="no-gpu">Nothing surfaced yet.</div>';
+    } catch (err) { /* leave last-known feed on screen */ }
+  }
+
+  document.getElementById("proactive-toggle-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("proactive-toggle-btn");
+    const currentlyOn = btn.textContent.startsWith("ON");
+    try {
+      const res = await fetch("/proactive/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !currentlyOn }),
+      });
+      const data = await res.json();
+      btn.textContent = data.enabled ? "ON — CLICK TO DISABLE" : "OFF — CLICK TO ENABLE";
+    } catch (err) { /* leave button as-is on failure */ }
+  });
+
+  document.getElementById("proactive-check-btn").addEventListener("click", async () => {
+    try {
+      await fetch("/proactive/check_now", { method: "POST" });
+      await pollProactiveView();
+    } catch (err) { /* no-op — server unreachable */ }
+  });
+
+  document.getElementById("notif-permission-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("notif-permission-btn");
+    if (typeof Notification === "undefined") { btn.textContent = "UNSUPPORTED"; return; }
+    const perm = await Notification.requestPermission();
+    btn.textContent = perm === "granted" ? "OS ALERTS ON" : "PERMISSION DENIED";
+  });
+
+  // --- VISION: real image capture (webcam/file/paste), analyzed by a
+  // separate small vision model (mcp_servers/vision/server.py), logged
+  // into the same Dialogue Log conversation — not a separate vision-only
+  // history. qwen3:8b itself never sees the raw image; only the
+  // resulting text description enters its context via conversation
+  // history, so future turns can still reference it. ---
+  let visionImageBase64 = null;
+  let visionWebcamStream = null;
+
+  function setVisionPreview(dataUrl) {
+    const img = document.getElementById("vision-preview-img");
+    const placeholder = document.getElementById("vision-preview-placeholder");
+    document.getElementById("vision-webcam-video").style.display = "none";
+    img.src = dataUrl;
+    img.style.display = "block";
+    placeholder.style.display = "none";
+  }
+
+  function stopVisionWebcam() {
+    if (visionWebcamStream) {
+      visionWebcamStream.getTracks().forEach((t) => t.stop());
+      visionWebcamStream = null;
+    }
+    document.getElementById("vision-webcam-video").style.display = "none";
+  }
+
+  function captureVisionFrame() {
+    const video = document.getElementById("vision-webcam-video");
+    const canvas = document.getElementById("vision-capture-canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    visionImageBase64 = canvas.toDataURL("image/png").split(",")[1];
+  }
+
+  async function startVisionWebcam() {
+    if (visionWebcamStream) return true;
+    const insecureMsg = orionInsecureContextMessage();
+    if (insecureMsg) { document.getElementById("vision-status").textContent = insecureMsg; return false; }
+    if (!navigator.mediaDevices) {
+      document.getElementById("vision-status").textContent = "Camera unsupported in this browser";
+      return false;
+    }
+    try {
+      visionWebcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const video = document.getElementById("vision-webcam-video");
+      video.srcObject = visionWebcamStream;
+      video.style.display = "block";
+      document.getElementById("vision-preview-img").style.display = "none";
+      document.getElementById("vision-preview-placeholder").style.display = "none";
+      // A snapshot is what the vision model actually analyzes — grab one
+      // once the stream settles rather than continuously re-capturing.
+      setTimeout(captureVisionFrame, 500);
+      return true;
+    } catch (err) {
+      document.getElementById("vision-status").textContent = "Webcam unavailable: " + err.message;
+      return false;
+    }
+  }
+
+  document.getElementById("vision-webcam-btn").addEventListener("click", startVisionWebcam);
+
+  document.getElementById("vision-file-btn").addEventListener("click", () => document.getElementById("vision-file-input").click());
+  document.getElementById("vision-file-input").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    stopVisionWebcam();
+    const reader = new FileReader();
+    reader.onload = () => { visionImageBase64 = reader.result.split(",")[1]; setVisionPreview(reader.result); };
+    reader.readAsDataURL(file);
+  });
+
+  document.addEventListener("paste", (e) => {
+    if (activeTab !== "vision" || !e.clipboardData) return;
+    const item = Array.from(e.clipboardData.items || []).find((i) => i.type.startsWith("image/"));
+    if (!item) return;
+    stopVisionWebcam();
+    const file = item.getAsFile();
+    const reader = new FileReader();
+    reader.onload = () => { visionImageBase64 = reader.result.split(",")[1]; setVisionPreview(reader.result); };
+    reader.readAsDataURL(file);
+  });
+
+  document.getElementById("vision-analyze-btn").addEventListener("click", async () => {
+    const statusEl = document.getElementById("vision-status");
+    const resultEl = document.getElementById("vision-result");
+    const question = document.getElementById("vision-question").value.trim() || "Describe what's in this image.";
+
+    if (visionWebcamStream) captureVisionFrame(); // use the current frame, not a stale one
+
+    if (!visionImageBase64) {
+      statusEl.textContent = "No image selected";
+      return;
+    }
+
+    statusEl.textContent = "ANALYZING...";
+    try {
+      const res = await fetch("/vision/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversationId, image_base64: visionImageBase64, question }),
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      conversationId = data.conversation_id;
+      statusEl.textContent = "DONE";
+      resultEl.textContent = data.reply;
+      appendMessage("user", "[Image attached] " + question);
+      appendMessage("assistant", data.reply);
+    } catch (err) {
+      statusEl.textContent = "FAILED";
+      resultEl.textContent = err.message;
+    }
+  });
+
+  // --- Active vision tracking (v1.2 Stage 14): the browser, not the
+  // server, owns the loop — the camera only ever lives in this tab.
+  // Every ~5s the current frame is diffed against the last frame that
+  // was actually SENT (not merely checked), at a tiny downscaled
+  // resolution, so gradual real change (someone slowly walking in) still
+  // accumulates past the threshold even though no single tick looks big
+  // — comparing against the last *checked* frame instead would reset the
+  // baseline every tick and make that kind of change much harder to ever
+  // notice. Only frames that clear the threshold are actually analyzed by
+  // the vision model, so a static room doesn't spam calls or the feed.
+  let visionTrackingLocalEnabled = false;
+  let visionTrackingTimer = null;
+  let visionTrackingPrevSample = null;
+  const VISION_TRACKING_INTERVAL_MS = 5000;
+  const VISION_TRACKING_DIFF_THRESHOLD = 10; // mean per-byte diff, 0-255 scale — empirically well above webcam sensor noise on a static scene
+  const visionDiffCanvas = document.createElement("canvas");
+  visionDiffCanvas.width = 32;
+  visionDiffCanvas.height = 24;
+
+  function sampleFrameForDiff(video) {
+    const ctx = visionDiffCanvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, visionDiffCanvas.width, visionDiffCanvas.height);
+    return ctx.getImageData(0, 0, visionDiffCanvas.width, visionDiffCanvas.height).data;
+  }
+
+  function meanByteDiff(a, b) {
+    let total = 0;
+    for (let i = 0; i < a.length; i++) total += Math.abs(a[i] - b[i]);
+    return total / a.length;
+  }
+
+  function visionTrackingRowHtml(ev) {
+    return (
+      '<div class="notif-row"><div class="n-head"><span>TRACKED</span><span>' +
+      fmtNotifTime(ev.created_at) + '</span></div><div class="n-body">' + ev.description + "</div></div>"
+    );
+  }
+
+  function renderVisionTrackingEvent(ev) {
+    const feed = document.getElementById("vision-tracking-feed");
+    if (feed.querySelector(".no-gpu")) feed.innerHTML = "";
+    feed.insertAdjacentHTML("afterbegin", visionTrackingRowHtml(ev));
+    while (feed.children.length > 50) feed.removeChild(feed.lastChild);
+  }
+
+  async function pollVisionTrackingView() {
+    try {
+      const [state, log] = await Promise.all([
+        (await fetch("/vision/tracking_state")).json(),
+        (await fetch("/vision/tracking_log")).json(),
+      ]);
+      syncVisionTrackingUI(state);
+      const feed = document.getElementById("vision-tracking-feed");
+      feed.innerHTML = log.events.length
+        ? log.events.map(visionTrackingRowHtml).join("")
+        : '<div class="no-gpu">Nothing tracked yet.</div>';
+    } catch (err) { /* leave last-known state/feed on screen */ }
+  }
+
+  function syncVisionTrackingUI(state) {
+    const btn = document.getElementById("vision-tracking-btn");
+    const sub = document.getElementById("vision-tracking-sub");
+    visionTrackingLocalEnabled = state.enabled;
+    if (!state.enabled) {
+      sub.textContent = "OFF";
+      btn.textContent = "START LIVE TRACKING";
+      stopVisionTrackingLoop({ alsoDisableServer: false }); // server already knows it's off
+      return;
+    }
+    if (visionWebcamStream) {
+      sub.textContent = "TRACKING";
+      btn.textContent = "STOP LIVE TRACKING";
+      startVisionTrackingLoop();
+    } else {
+      // Armed server-side (e.g. ORION itself called vision_start_tracking
+      // in conversation) but no camera open in this tab yet — deliberately
+      // NOT auto-calling getUserMedia here. A background WebSocket message
+      // silently turning on someone's camera would be exactly the kind of
+      // surprising, unconfirmed action this project avoids everywhere else.
+      sub.textContent = "ARMED";
+      btn.textContent = "OPEN CAMERA TO START";
+    }
+  }
+
+  function startVisionTrackingLoop() {
+    if (visionTrackingTimer) return;
+    visionTrackingPrevSample = null;
+    visionTrackingTimer = setInterval(maybeSendTrackingFrame, VISION_TRACKING_INTERVAL_MS);
+  }
+
+  function stopVisionTrackingLoop({ alsoDisableServer = true } = {}) {
+    clearInterval(visionTrackingTimer);
+    visionTrackingTimer = null;
+    visionTrackingPrevSample = null;
+    if (alsoDisableServer && visionTrackingLocalEnabled) {
+      visionTrackingLocalEnabled = false;
+      fetch("/vision/tracking/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
+      }).catch(() => {});
+      document.getElementById("vision-tracking-sub").textContent = "OFF";
+      document.getElementById("vision-tracking-btn").textContent = "START LIVE TRACKING";
+    }
+  }
+
+  async function maybeSendTrackingFrame() {
+    const video = document.getElementById("vision-webcam-video");
+    if (!visionWebcamStream || !video.videoWidth) return;
+
+    const sample = sampleFrameForDiff(video);
+    const isFirstFrame = !visionTrackingPrevSample;
+    const changed = isFirstFrame || meanByteDiff(sample, visionTrackingPrevSample) > VISION_TRACKING_DIFF_THRESHOLD;
+    if (!changed) return;
+
+    captureVisionFrame(); // full-resolution grab into visionImageBase64, via vision-capture-canvas
+    visionTrackingPrevSample = sample; // baseline resets only on an actually-sent frame, see block comment above
+    try {
+      await fetch("/vision/track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_base64: visionImageBase64 }),
+      });
+      // No need to render here — the same event arrives over the
+      // WebSocket broadcast a moment later and renders once, everywhere.
+    } catch (err) { /* a missed tick isn't worth surfacing — the next one will retry */ }
+  }
+
+  document.getElementById("vision-tracking-btn").addEventListener("click", async () => {
+    if (visionTrackingLocalEnabled) {
+      stopVisionTrackingLoop();
+      stopVisionWebcam(); // an explicit, visible "the camera is off now" signal
+      return;
+    }
+    const gotCamera = await startVisionWebcam();
+    if (!gotCamera) return;
+    try {
+      const res = await fetch("/vision/tracking/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: true, interval_seconds: 5 }),
+      });
+      const state = await res.json();
+      syncVisionTrackingUI(state);
+    } catch (err) {
+      document.getElementById("vision-tracking-sub").textContent = "FAILED";
+    }
+  });
+
+  // --- COMPUTER: real, live cursor position/screen size from
+  // mcp_servers/computer/server.py's read-only computer_cursor_status
+  // tool. No manual click/type controls here — actual control happens
+  // through conversation with ORION (see the tab's own note), each call
+  // DESTRUCTIVE and confirmed for real. ---
+  async function pollComputerStatus() {
+    try {
+      const status = await (await fetch("/computer/status")).json();
+      document.getElementById("computer-cursor-pos").textContent = status.x + ", " + status.y;
+      document.getElementById("computer-screen-size").textContent = status.screen_width + " x " + status.screen_height;
+      document.getElementById("computer-failsafe-sub").textContent = status.failsafe_armed ? "FAILSAFE ARMED" : "FAILSAFE OFF";
+    } catch (err) { /* leave last-known values on screen */ }
+  }
+  setInterval(() => { if (activeTab === "computer") pollComputerStatus(); }, 2000);
+
+  // --- LOCATION: a real map (vendored Leaflet.js + OpenStreetMap tiles),
+  // real browser Geolocation (permission-gated, never guessed server-
+  // side — see mcp_servers/location/server.py's own reasoning), and real
+  // routing via the keyless Nominatim+OSRM stack. Typed and spoken
+  // destinations both work identically to asking ORION in chat, since
+  // every tool here already goes through the same orchestrator.
+  let locationMap = null;
+  let locationUserMarker = null;
+  let locationDestMarker = null;
+  let locationRouteLine = null;
+  let locationLat = null;
+  let locationLon = null;
+
+  function initLocationMap() {
+    if (locationMap) {
+      setTimeout(() => locationMap.invalidateSize(), 50);
+      return;
+    }
+    locationMap = L.map("location-map", { attributionControl: true }).setView([20, 0], 2);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(locationMap);
+    setTimeout(() => locationMap.invalidateSize(), 50);
+  }
+
+  function locationUserIcon() { return L.divIcon({ className: "", html: '<div class="location-marker-dot"></div>', iconSize: [14, 14] }); }
+  function locationDestIcon() { return L.divIcon({ className: "", html: '<div class="location-marker-dest"></div>', iconSize: [12, 12] }); }
+
+  // Chromium's navigator.geolocation fails inside the Electron desktop
+  // app no matter what (open-source Electron has no Google geolocation
+  // API key, so its network lookup always errors — see desktop/main.js's
+  // getWindowsLocation()). window.orionDesktop is only ever defined
+  // there (exposed by desktop/preload.js); an ordinary browser tab falls
+  // straight through to plain navigator.geolocation, unchanged.
+  // Browsers refuse geolocation/camera entirely — not "ask and deny",
+  // the APIs are simply absent — outside a secure context (HTTPS, or
+  // http://localhost/127.0.0.1). Opening ORION via its LAN address
+  // (http://<ip>:8000, exactly what the NETWORK tab hands a phone) is
+  // plain HTTP on a non-localhost host, so it's NOT secure — this one
+  // fact explains "location AND webcam AND everything permission-
+  // related" failing together far better than several unrelated bugs
+  // would. window.isSecureContext is the real, standard signal for it.
+  function orionInsecureContextMessage() {
+    if (window.isSecureContext) return null;
+    return "This page isn't loaded securely (" + location.protocol + "//" + location.host + ") — " +
+      "browsers block location/camera access entirely outside https:// or http://localhost. " +
+      "Open ORION as http://localhost:8000 (or 127.0.0.1) on this machine instead.";
+  }
+
+  function orionGetCurrentPosition(onSuccess, onError, options) {
+    if (window.orionDesktop && window.orionDesktop.getLocation) {
+      window.orionDesktop.getLocation()
+        .then((loc) => onSuccess({ coords: { latitude: loc.lat, longitude: loc.lon, accuracy: loc.accuracy } }))
+        .catch((err) => onError({ code: 2, message: err.message || String(err) }));
+      return;
+    }
+    const insecureMsg = orionInsecureContextMessage();
+    if (insecureMsg) { onError({ code: 2, message: insecureMsg }); return; }
+    if (!navigator.geolocation) { onError({ code: 2, message: "Geolocation unsupported" }); return; }
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
+  }
+
+  document.getElementById("location-geo-btn").addEventListener("click", () => {
+    const statusEl = document.getElementById("location-status");
+    statusEl.textContent = "LOCATING...";
+    orionGetCurrentPosition(
+      (pos) => {
+        locationLat = pos.coords.latitude;
+        locationLon = pos.coords.longitude;
+        statusEl.textContent = "LOCATED";
+        initLocationMap();
+        locationMap.setView([locationLat, locationLon], 14);
+        if (locationUserMarker) locationMap.removeLayer(locationUserMarker);
+        locationUserMarker = L.marker([locationLat, locationLon], { icon: locationUserIcon() }).addTo(locationMap);
+      },
+      (err) => { statusEl.textContent = "Location denied/unavailable: " + err.message; },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+
+  // The last /location/directions response, kept around so clicking a
+  // different route in the comparison list can redraw the map without
+  // a second network round trip — the primary route plus every
+  // alternative are already in hand from the one request.
+  let locationLastResult = null;
+
+  function drawLocationRoute(destLat, destLon, routeGeometry) {
+    initLocationMap();
+    if (locationDestMarker) locationMap.removeLayer(locationDestMarker);
+    if (locationRouteLine) locationMap.removeLayer(locationRouteLine);
+    locationDestMarker = L.marker([destLat, destLon], { icon: locationDestIcon() }).addTo(locationMap);
+    const latlngs = routeGeometry.map((pair) => [pair[1], pair[0]]); // OSRM gives [lon,lat] -> Leaflet wants [lat,lon]
+    locationRouteLine = L.polyline(latlngs, { color: "#4fd6e8", weight: 4, opacity: 0.85 }).addTo(locationMap);
+    locationMap.fitBounds(locationRouteLine.getBounds(), { padding: [30, 30] });
+  }
+
+  function renderLocationSteps(steps) {
+    const list = document.getElementById("location-steps-list");
+    document.getElementById("location-steps-count").textContent = steps ? steps.length : "—";
+    if (!steps || !steps.length) {
+      list.innerHTML = '<div class="no-gpu">Turn-by-turn is only available for the primary route.</div>';
+      return;
+    }
+    list.innerHTML = steps.map((s, i) =>
+      '<div class="forecast-row"><span class="f-date">' + (i + 1) + '.</span><span class="f-cond">' + s + '</span></div>'
+    ).join("");
+  }
+
+  function selectLocationRoute(index) {
+    if (!locationLastResult) return;
+    const data = locationLastResult;
+    const rows = document.querySelectorAll("#location-route-list .forecast-row");
+    rows.forEach((row, i) => row.style.color = i === index ? "var(--cyan-bright)" : "");
+
+    if (index === 0) {
+      document.getElementById("location-distance").textContent = data.distance_km + " km";
+      document.getElementById("location-eta").textContent = data.duration_minutes + " min";
+      drawLocationRoute(data.destination_lat, data.destination_lon, data.route_geometry);
+      renderLocationSteps(data.steps);
+    } else {
+      const alt = data.alternative_routes[index - 1];
+      document.getElementById("location-distance").textContent = alt.distance_km + " km";
+      document.getElementById("location-eta").textContent = alt.duration_minutes + " min";
+      drawLocationRoute(data.destination_lat, data.destination_lon, alt.route_geometry);
+      renderLocationSteps(null);
+    }
+  }
+
+  function renderLocationRouteList(data) {
+    const allRoutes = [{ distance_km: data.distance_km, duration_minutes: data.duration_minutes }, ...data.alternative_routes];
+    document.getElementById("location-route-count").textContent = String(allRoutes.length).padStart(2, "0");
+    const list = document.getElementById("location-route-list");
+    list.innerHTML = allRoutes.map((r, i) =>
+      '<div class="forecast-row" data-route-index="' + i + '" style="cursor:pointer' + (i === 0 ? ';color:var(--cyan-bright)' : '') + '">' +
+      '<span class="f-date">ROUTE ' + (i + 1) + (i === 0 ? " (best)" : "") + '</span>' +
+      '<span class="f-cond">' + r.distance_km + ' km</span>' +
+      '<span class="f-temps">' + r.duration_minutes + ' min</span></div>'
+    ).join("");
+    Array.from(list.querySelectorAll(".forecast-row")).forEach((row) => {
+      row.addEventListener("click", () => selectLocationRoute(parseInt(row.dataset.routeIndex, 10)));
+    });
+  }
+
+  document.getElementById("location-go-btn").addEventListener("click", async () => {
+    const statusEl = document.getElementById("location-status");
+    const destination = document.getElementById("location-dest-input").value.trim();
+    const mode = document.getElementById("location-mode-select").value;
+    const alternatives = document.getElementById("location-alternatives-check").checked;
+    if (locationLat === null || locationLon === null) { statusEl.textContent = "Set your location first"; return; }
+    if (!destination) { statusEl.textContent = "Enter a destination"; return; }
+
+    statusEl.textContent = "ROUTING...";
+    try {
+      const res = await fetch("/location/directions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ origin_lat: locationLat, origin_lon: locationLon, destination, mode, alternatives }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || ("HTTP " + res.status));
+      statusEl.textContent = "ROUTE FOUND";
+      locationLastResult = data;
+
+      document.getElementById("location-distance").textContent = data.distance_km + " km";
+      document.getElementById("location-eta").textContent = data.duration_minutes + " min";
+      document.getElementById("location-traffic").textContent = data.traffic === "unavailable" ? "UNAVAILABLE" : data.traffic;
+
+      drawLocationRoute(data.destination_lat, data.destination_lon, data.route_geometry);
+      renderLocationRouteList(data);
+      renderLocationSteps(data.steps);
+    } catch (err) {
+      statusEl.textContent = "FAILED: " + err.message;
+    }
+  });
+
+  // Destination mic: same MediaRecorder push-to-talk pattern as the main
+  // chat mic, but transcribe-only (no LLM turn, no /chat call) — fills
+  // the text field for the user to review/edit, same reasoning as the
+  // VISION tab bypassing full tool-selection for a deterministic action.
+  let locationMediaRecorder = null;
+  let locationChunks = [];
+
+  async function startLocationMic() {
+    const insecureMsg = orionInsecureContextMessage();
+    if (insecureMsg) { document.getElementById("location-status").textContent = insecureMsg; return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      locationChunks = [];
+      locationMediaRecorder = new MediaRecorder(stream);
+      locationMediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) locationChunks.push(e.data); };
+      locationMediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(locationChunks, { type: locationMediaRecorder.mimeType || "audio/webm" });
+        const statusEl = document.getElementById("location-status");
+        statusEl.textContent = "TRANSCRIBING...";
+        try {
+          const form = new FormData();
+          form.append("audio", blob, "recording.webm");
+          const res = await fetch("/voice/transcribe", { method: "POST", body: form });
+          const data = await res.json();
+          document.getElementById("location-dest-input").value = data.text || "";
+          statusEl.textContent = data.text ? "TRANSCRIBED" : "COULD NOT TRANSCRIBE";
+        } catch (err) {
+          statusEl.textContent = "Transcription failed: " + err.message;
+        }
+      };
+      locationMediaRecorder.start();
+      document.getElementById("location-mic-btn").classList.add("recording");
+    } catch (err) {
+      document.getElementById("location-status").textContent = "Microphone unavailable: " + err.message;
+    }
+  }
+  function stopLocationMic() {
+    if (locationMediaRecorder && locationMediaRecorder.state !== "inactive") locationMediaRecorder.stop();
+    document.getElementById("location-mic-btn").classList.remove("recording");
+  }
+  const locationMicBtn = document.getElementById("location-mic-btn");
+  locationMicBtn.addEventListener("mousedown", startLocationMic);
+  locationMicBtn.addEventListener("mouseup", stopLocationMic);
+  locationMicBtn.addEventListener("mouseleave", stopLocationMic);
+  locationMicBtn.addEventListener("touchstart", (e) => { e.preventDefault(); startLocationMic(); });
+  locationMicBtn.addEventListener("touchend", (e) => { e.preventDefault(); stopLocationMic(); });
+
+  // --- WEATHER: real current conditions + forecast (Open-Meteo, keyless)
+  // via mcp_servers/weather/server.py. Reuses the LOCATION tab's
+  // coordinates when already granted there — no need to ask for the same
+  // real permission twice — falling back to its own request otherwise.
+  let weatherLat = null;
+  let weatherLon = null;
+
+  async function fetchWeather(lat, lon) {
+    const statusEl = document.getElementById("weather-status");
+    try {
+      const [currentRes, forecastRes] = await Promise.all([
+        fetch("/weather/current?lat=" + lat + "&lon=" + lon),
+        fetch("/weather/forecast?lat=" + lat + "&lon=" + lon + "&days=5"),
+      ]);
+      const current = await currentRes.json();
+      if (!currentRes.ok) throw new Error(current.detail || "HTTP " + currentRes.status);
+      const forecastData = await forecastRes.json();
+
+      statusEl.textContent = "Live at (" + lat.toFixed(3) + ", " + lon.toFixed(3) + ")";
+      document.getElementById("weather-temp").textContent = Math.round(current.temperature_c) + "°C";
+      document.getElementById("weather-conditions").textContent = current.conditions;
+      document.getElementById("weather-feels-like").textContent = Math.round(current.feels_like_c) + "°C";
+      document.getElementById("weather-humidity").textContent = current.humidity_percent + "%";
+      document.getElementById("weather-wind").textContent = current.wind_speed_kmh + " km/h";
+
+      const chip = document.getElementById("topbar-weather-chip");
+      chip.textContent = "WEATHER " + Math.round(current.temperature_c) + "°C";
+      chip.title = current.conditions;
+
+      const forecast = forecastData.forecast || [];
+      document.getElementById("weather-forecast-sub").textContent = forecast.length + " DAYS";
+      const list = document.getElementById("weather-forecast-list");
+      list.innerHTML = forecast.length
+        ? forecast.map((day) =>
+            '<div class="forecast-row"><span class="f-date">' + day.date + '</span>' +
+            '<span class="f-cond">' + day.conditions + '</span>' +
+            '<span class="f-temps">' + Math.round(day.temp_max_c) + '&deg; / ' + Math.round(day.temp_min_c) + '&deg;</span>' +
+            '<span class="f-precip">' + day.precipitation_probability_percent + '%</span></div>'
+          ).join("")
+        : '<div class="no-gpu">No forecast available.</div>';
+    } catch (err) {
+      statusEl.textContent = "Weather unavailable: " + err.message;
+    }
+  }
+
+  document.getElementById("weather-geo-btn").addEventListener("click", () => {
+    const statusEl = document.getElementById("weather-status");
+    statusEl.textContent = "LOCATING...";
+    orionGetCurrentPosition(
+      (pos) => {
+        weatherLat = pos.coords.latitude;
+        weatherLon = pos.coords.longitude;
+        fetchWeather(weatherLat, weatherLon);
+      },
+      (err) => { statusEl.textContent = "Location denied/unavailable: " + err.message; },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+
+  function pollWeatherView() {
+    if (weatherLat === null && locationLat !== null) {
+      weatherLat = locationLat;
+      weatherLon = locationLon;
+    }
+    if (weatherLat !== null) fetchWeather(weatherLat, weatherLon);
+  }
 
   // --- Push-to-talk voice ---
   const mic = document.getElementById("mic");
@@ -784,21 +2258,15 @@
   let stopListeningAmplitude = null;
 
   function stopPlayback() {
-    // "Starting a new recording immediately stops any in-progress audio
-    // playback" — the beta's whole interruption-handling requirement.
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio = null;
-    }
-    if (stopAmplitudeLoop) {
-      stopAmplitudeLoop();
-      stopAmplitudeLoop = null;
-    }
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+    if (stopAmplitudeLoop) { stopAmplitudeLoop(); stopAmplitudeLoop = null; }
   }
 
   async function startRecording() {
     stopPlayback();
     let stream;
+    const insecureMsg = orionInsecureContextMessage();
+    if (insecureMsg) { appendMessage("error", insecureMsg); return; }
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
@@ -815,10 +2283,6 @@
     };
     mediaRecorder.start();
     setOrionState("listening");
-
-    // Real mic-input amplitude for the LISTENING visual — best-effort:
-    // if analyser setup fails for any reason, recording still proceeds
-    // fine without the waveform reactivity.
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const source = audioCtx.createMediaStreamSource(stream);
@@ -826,44 +2290,32 @@
       analyser.fftSize = 2048;
       source.connect(analyser);
       stopListeningAmplitude = startAmplitudeLoop(analyser);
-    } catch (err) { /* no waveform reactivity, recording still works */ }
+    } catch (err) { /* recording still works without waveform reactivity */ }
   }
 
   function finishRecording() {
-    if (mediaRecorder && mediaRecorder.state !== "inactive") {
-      mediaRecorder.stop();
-    }
+    if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
   }
 
   async function sendRecording(blob) {
     mic.classList.add("processing");
     setOrionState("thinking");
     const thinking = appendMessage("assistant", "...");
-
     try {
       const form = new FormData();
       form.append("audio", blob, "recording.webm");
       if (conversationId !== null) form.append("conversation_id", conversationId);
-
       const response = await fetch("/chat/voice", { method: "POST", body: form });
-      if (!response.ok) {
-        throw new Error("HTTP " + response.status);
-      }
+      if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
       thinking.remove();
-
-      // Same rendering path as a text turn — this is what "voice/text
-      // conversation continuity" means: a voice turn looks identical to
-      // a typed one in the log afterward, just tagged with a mic icon.
-      // If this pauses for confirmation, there's no reply/audio yet —
-      // renderChatResult renders the approve/deny prompt instead.
       const userDiv = appendMessage("user", data.transcribed_text || "(inaudible)");
       userDiv.classList.add("voice");
       await renderChatResult(data, { playAudio: true });
     } catch (err) {
       thinking.remove();
       appendMessage("error", "Voice request failed: " + err.message);
-      setOrionState("idle");
+      setOrionState("error", "concerned");
     } finally {
       mic.classList.remove("processing");
     }
@@ -876,24 +2328,19 @@
   mic.addEventListener("touchend", (e) => { e.preventDefault(); finishRecording(); });
 
   // --- Wake word ("ORION") ---
-  // Client-side detection via Porcupine (vendored IIFE build, see
-  // SETUP.md) — audio never leaves the browser unless the wake word
-  // actually fires, at which point it hands off to the exact same
-  // sendRecording() path push-to-talk uses.
-  const wakeStatus = document.getElementById("wake-status");
   const wakeStatusText = document.getElementById("wake-status-text");
+  const orionStatusChip = document.getElementById("orion-status-chip");
   let porcupine = null;
   let wakeArmed = false;
 
   function setWakeStatus(cls, text) {
-    wakeStatus.className = cls;
+    orionStatusChip.dataset.wake = cls || "";
     wakeStatusText.textContent = text;
+    const subWake = document.getElementById("sub-wake");
+    const subLabels = { armed: '<span class="s-ok">ARMED</span>', triggered: '<span class="s-warn">TRIGGERED</span>', error: '<span class="s-off">ERROR</span>' };
+    subWake.innerHTML = subLabels[cls] || '<span class="s-off">OFF</span>';
   }
 
-  // Simple amplitude-based auto-stop: record until the user has spoken and
-  // then gone quiet for SILENCE_MS, with a hard cap so a stuck mic can't
-  // record forever. This is what lets wake-triggered recording end itself —
-  // there's no button to release.
   const SILENCE_MS = 1200;
   const MAX_RECORDING_MS = 15000;
   const SPEECH_RMS_THRESHOLD = 0.02;
@@ -907,11 +2354,9 @@
     analyser.fftSize = 2048;
     source.connect(analyser);
     const buf = new Float32Array(analyser.fftSize);
-
     const chunks = [];
     const recorder = new MediaRecorder(stream);
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-
     const done = new Promise((resolve) => {
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
@@ -919,55 +2364,37 @@
         resolve(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }));
       };
     });
-
     recorder.start();
     setOrionState("listening");
-
     let hasSpoken = false;
     let silenceStart = null;
     const startTime = Date.now();
-
     await new Promise((resolve) => {
       const tick = () => {
         analyser.getFloatTimeDomainData(buf);
         let sumSquares = 0;
         for (let i = 0; i < buf.length; i++) sumSquares += buf[i] * buf[i];
         const rms = Math.sqrt(sumSquares / buf.length);
-        // Same analyser drives both the silence-detection cutoff and the
-        // LISTENING visual's --amplitude — no need for a second one.
-        coreWrap.style.setProperty("--amplitude", Math.min(1, rms * 6).toFixed(3));
-
+        targetAmplitude = Math.min(1, rms * 6);
         const now = Date.now();
-        if (rms > SPEECH_RMS_THRESHOLD) {
-          hasSpoken = true;
-          silenceStart = null;
-        } else if (hasSpoken && silenceStart === null) {
-          silenceStart = now;
-        }
-
+        if (rms > SPEECH_RMS_THRESHOLD) { hasSpoken = true; silenceStart = null; }
+        else if (hasSpoken && silenceStart === null) { silenceStart = now; }
         const elapsed = now - startTime;
         const silentLongEnough = silenceStart !== null && now - silenceStart > SILENCE_MS;
-        if ((hasSpoken && silentLongEnough) || elapsed > MAX_RECORDING_MS) {
-          resolve();
-          return;
-        }
+        if ((hasSpoken && silentLongEnough) || elapsed > MAX_RECORDING_MS) { resolve(); return; }
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
     });
-
     recorder.stop();
-    coreWrap.style.setProperty("--amplitude", "0");
+    targetAmplitude = 0;
     return done;
   }
 
   async function onWakeWordDetected() {
     if (!wakeArmed) return;
     setWakeStatus("triggered", "ORION heard — listening...");
-    try {
-      await window.WebVoiceProcessor.WebVoiceProcessor.unsubscribe(porcupine);
-    } catch (err) { /* already unsubscribed */ }
-
+    try { await window.WebVoiceProcessor.WebVoiceProcessor.unsubscribe(porcupine); } catch (err) {}
     try {
       const blob = await recordUntilSilence();
       await sendRecording(blob);
@@ -977,7 +2404,7 @@
       if (wakeArmed) {
         try {
           await window.WebVoiceProcessor.WebVoiceProcessor.subscribe(porcupine);
-          setWakeStatus("armed", "Wake word: listening for “ORION”");
+          setWakeStatus("armed", "Listening for wake word...");
         } catch (err) {
           setWakeStatus("error", "Wake word: failed to resume (" + err.message + ")");
         }
@@ -990,7 +2417,6 @@
       setWakeStatus("", "Wake word: unavailable (vendor scripts missing)");
       return;
     }
-
     let accessKey = "";
     try {
       const cfg = await (await fetch("/config/voice")).json();
@@ -1003,14 +2429,12 @@
       setWakeStatus("", "Wake word: not configured (see WAKE_WORD_SETUP.md)");
       return;
     }
-
     const keywordPath = "models/orion_keyword.ppn";
     const keywordCheck = await fetch(keywordPath, { method: "HEAD" }).catch(() => null);
     if (!keywordCheck || !keywordCheck.ok) {
       setWakeStatus("", "Wake word: keyword file missing (see WAKE_WORD_SETUP.md)");
       return;
     }
-
     try {
       porcupine = await window.PorcupineWeb.PorcupineWorker.create(
         accessKey,
@@ -1021,7 +2445,7 @@
       );
       await window.WebVoiceProcessor.WebVoiceProcessor.subscribe(porcupine);
       wakeArmed = true;
-      setWakeStatus("armed", "Wake word: listening for “ORION”");
+      setWakeStatus("armed", "Listening for wake word...");
     } catch (err) {
       setWakeStatus("error", "Wake word: init failed (" + err.message + ")");
     }
